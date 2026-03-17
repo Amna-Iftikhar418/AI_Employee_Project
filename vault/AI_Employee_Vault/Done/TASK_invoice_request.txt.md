@@ -2,10 +2,9 @@
 type: file_task
 source: inbox
 original_file: invoice_request.txt
-created: 2026-03-17T12:22:42.405729
+created: 2026-03-17T13:20:01.799942
 priority: normal
-status: completed
-completed: 2026-03-17T12:30:00
+status: processed
 ---
 
 ## Task

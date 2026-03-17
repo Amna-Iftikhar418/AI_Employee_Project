@@ -25,3 +25,6 @@ See /Done
 - Task found in /Needs_Action (2026-03-17): TASK_invoice_request.txt.md - ABC Company March invoice (HIGH priority, deadline tomorrow)
 - Plan created (2026-03-17): plan_invoice_request.md → /Plans
 - Task processed (2026-03-17): invoice_request → moved to /Done
+- Task detected (2026-03-17): TASK_invoice_request.txt.md - ABC Company March invoice (HIGH priority)
+- Plan created (2026-03-17): PLAN_invoice_request.txt.md → /Plans
+- Task processing (2026-03-17): invoice_request.txt - pending approval for invoice send

@@ -1,1 +1,0 @@
-Client asked for invoice.

@@ -11,10 +11,14 @@
             "id": "7b013be7a95f2f6e",
             "type": "leaf",
             "state": {
-              "type": "empty",
-              "state": {},
+              "type": "markdown",
+              "state": {
+                "file": "Skills/basic_file_handler.md",
+                "mode": "source",
+                "source": false
+              },
               "icon": "lucide-file",
-              "title": "New tab"
+              "title": "basic_file_handler"
             }
           }
         ]
@@ -192,16 +196,18 @@
       "bases:Create new base": false
     }
   },
-  "active": "7b013be7a95f2f6e",
+  "active": "546868168350b687",
   "lastOpenFiles": [
+    "Done/TASK_invoice_request.txt.md",
+    "Logs/log_2026-03-17.md",
+    "Plans/PLAN_invoice_request.txt.md",
+    "Needs_Action/TASK_invoice_request.txt.md",
+    "Inbox/invoice_request.txt",
     "Skills/basic_file_handler.md",
     "Welcome.md",
     "Plans/plan_TASK_invoice_request.txt.md.md",
     "Logs/log_abc_invoice_task.md",
     "Plans/plan_abc_company_invoice.md",
-    "Needs_Action/TASK_invoice_request.txt.md",
-    "Inbox/invoice_request.txt",
-    "Logs/log_2026-03-17.md",
     "Plans/invoice_tasks_plan.md",
     "Inbox/task1.md",
     "Needs_Action/task1.md",
