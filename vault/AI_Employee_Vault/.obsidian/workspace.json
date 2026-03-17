@@ -11,14 +11,10 @@
             "id": "7b013be7a95f2f6e",
             "type": "leaf",
             "state": {
-              "type": "markdown",
-              "state": {
-                "file": "Welcome.md",
-                "mode": "source",
-                "source": false
-              },
+              "type": "empty",
+              "state": {},
               "icon": "lucide-file",
-              "title": "Welcome"
+              "title": "New tab"
             }
           }
         ]
@@ -110,7 +106,6 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "Welcome.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -120,7 +115,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Backlinks for Welcome"
+              "title": "Backlinks"
             }
           },
           {
@@ -129,12 +124,11 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "Welcome.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "Outgoing links from Welcome"
+              "title": "Outgoing links"
             }
           },
           {
@@ -172,13 +166,12 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "Welcome.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Outline of Welcome"
+              "title": "Outline"
             }
           }
         ]
@@ -201,6 +194,17 @@
   },
   "active": "7b013be7a95f2f6e",
   "lastOpenFiles": [
+    "Skills/basic_file_handler.md",
+    "Welcome.md",
+    "Plans/plan_TASK_invoice_request.txt.md.md",
+    "Logs/log_abc_invoice_task.md",
+    "Plans/plan_abc_company_invoice.md",
+    "Needs_Action/TASK_invoice_request.txt.md",
+    "Inbox/invoice_request.txt",
+    "Logs/log_2026-03-17.md",
+    "Plans/invoice_tasks_plan.md",
+    "Inbox/task1.md",
+    "Needs_Action/task1.md",
     "Logs/log_2026-03-16.md",
     "Plans/invoice_plan.md",
     "Inbox/new_task.md",
@@ -218,7 +222,6 @@
     "Done",
     "Plans",
     "Needs_Action",
-    "Inbox",
-    "Welcome.md"
+    "Inbox"
   ]
 }
