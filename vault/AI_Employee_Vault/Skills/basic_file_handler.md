@@ -84,7 +84,10 @@ source: Needs_Action/<task_filename>
 ---
 
 ## Objective
-<clear description of task goal>
+A precise, actionable goal derived from the task content. Must include:
+- WHAT needs to be done
+- WHO/WHERE (if applicable)
+- Any deadline or priority
 
 ## Steps
 - [ ] Analyze task
@@ -131,9 +134,11 @@ Logs/YYYY-MM-DD.md
 ## <ISO timestamp> — <task_name>
 
 - Task: <task_filename>
-- Actions:
-  - Plan created: PLAN_<task_name>.md
+- Plan Reference: PLAN_<task_name>.md
+- Actions Performed:
+  - Plan created
   - Dashboard updated
+- Dashboard Update: confirmed
 - Status: processed
 
 ---

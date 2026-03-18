@@ -19,7 +19,7 @@ When a task appears in the Needs_Action folder:
 
 1. Read task metadata
 2. Understand the request
-3. Create a plan in the Plans folder
+3. Create a plan in the Plans folder (MANDATORY — MUST occur BEFORE any other step)
 4. Update Dashboard.md
 5. Write a log entry in Logs
 6. Update task status
