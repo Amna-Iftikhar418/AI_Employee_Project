@@ -1,0 +1,39 @@
+# ─── Secrets & credentials ───────────────────────────────────────────────────
+# FIX: Never track secrets, OAuth tokens, or credentials in version control
+.env
+token.json
+credentials.json
+
+# ─── WhatsApp session data ────────────────────────────────────────────────────
+.wwebjs_auth/
+.wwebjs_cache/
+.whatsapp_session/
+.whatsapp_processed.json
+
+# ─── Gmail processed state ────────────────────────────────────────────────────
+processed_emails.json
+
+# ─── Lock files (runtime, not source) ────────────────────────────────────────
+*.lock
+
+# ─── Log files ────────────────────────────────────────────────────────────────
+*.log
+
+# ─── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+.env.local
+
+# ─── Node.js ──────────────────────────────────────────────────────────────────
+node_modules/
+package-lock.json
+
+# ─── Playwright ───────────────────────────────────────────────────────────────
+.playwright-mcp/
+
+# ─── OS noise ─────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db

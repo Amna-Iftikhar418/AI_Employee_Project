@@ -1,0 +1,113 @@
+// whatsapp_client.js — Persistent WhatsApp client using whatsapp-web.js
+//
+// Uses WebSocket (not a full browser) — ~30MB RAM, no visible window.
+// Session saved permanently to .wwebjs_auth/ — QR scan only needed once.
+// Outputs one JSON line to stdout per incoming message.
+// Python reads stdout as a stream.
+
+const { Client, LocalAuth } = require('whatsapp-web.js');
+const qrcode = require('qrcode-terminal');
+const path = require('path');
+
+const AUTH_DIR = path.join(__dirname, '..', '.wwebjs_auth');
+
+// FIX: Reconnection state — retry with exponential backoff instead of hard exit
+const MAX_RECONNECTS = 3;
+let reconnectAttempts = 0;
+
+/**
+ * FIX: Extracted client creation into a function so we can reinitialize
+ * on disconnect without restarting the whole Node process.
+ */
+function createClient() {
+    const client = new Client({
+        authStrategy: new LocalAuth({ dataPath: AUTH_DIR }),
+        puppeteer: {
+            headless: true,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+            ],
+        },
+    });
+
+    // QR code — shown in terminal once, then session is saved permanently
+    client.on('qr', (qr) => {
+        process.stderr.write('\n[whatsapp_client] Scan this QR code with your phone:\n\n');
+        qrcode.generate(qr, { small: true });
+        process.stderr.write('\n[whatsapp_client] Waiting for scan...\n');
+    });
+
+    client.on('authenticated', () => {
+        // FIX: Reset reconnect counter on successful authentication
+        reconnectAttempts = 0;
+        process.stderr.write('[whatsapp_client] Authenticated — session saved permanently.\n');
+    });
+
+    client.on('ready', () => {
+        // FIX: Reset reconnect counter once client is fully ready
+        reconnectAttempts = 0;
+        process.stderr.write('[whatsapp_client] Ready! Listening for messages...\n');
+    });
+
+    client.on('auth_failure', (msg) => {
+        process.stderr.write(`[whatsapp_client] Auth failed: ${msg}\n`);
+        process.exit(1);
+    });
+
+    // FIX: Reconnect with exponential backoff on disconnect instead of hard exit.
+    // This handles transient network drops without requiring a manual restart.
+    client.on('disconnected', (reason) => {
+        process.stderr.write(`[whatsapp_client] Disconnected: ${reason}.\n`);
+
+        if (reconnectAttempts < MAX_RECONNECTS) {
+            reconnectAttempts++;
+            const delayMs = reconnectAttempts * 5000; // 5s, 10s, 15s
+            process.stderr.write(
+                `[whatsapp_client] Reconnecting in ${delayMs / 1000}s ` +
+                `(attempt ${reconnectAttempts}/${MAX_RECONNECTS})...\n`
+            );
+            setTimeout(() => {
+                process.stderr.write('[whatsapp_client] Reinitializing client...\n');
+                client.initialize();
+            }, delayMs);
+        } else {
+            process.stderr.write(
+                `[whatsapp_client] Max reconnect attempts (${MAX_RECONNECTS}) reached. Exiting.\n`
+            );
+            process.exit(1);
+        }
+    });
+
+    // New message received — output JSON line to stdout
+    client.on('message', async (message) => {
+        try {
+            // Skip status messages, broadcasts, and messages sent by us
+            if (message.isStatus || message.from === 'status@broadcast') return;
+            if (message.fromMe) return;
+
+            const contact = await message.getContact();
+            const sender = contact.pushname || contact.name || message.from.replace('@c.us', '');
+            const text = message.body || '';
+
+            if (!text.trim()) return;
+
+            const output = JSON.stringify({ sender, text: text.trim() });
+            process.stdout.write(output + '\n');
+
+            process.stderr.write(
+                `[whatsapp_client] Message from ${sender}: ${text.substring(0, 60)}\n`
+            );
+        } catch (err) {
+            process.stderr.write(`[whatsapp_client] Error handling message: ${err.message}\n`);
+        }
+    });
+
+    return client;
+}
+
+process.stderr.write('[whatsapp_client] Starting WhatsApp client...\n');
+const client = createClient();
+client.initialize();
