@@ -15,10 +15,15 @@ class FileSystemWatcher(BaseWatcher):
 
     def __init__(self, vault_path: str):
         super().__init__(vault_path, check_interval=10)
-        self.inbox = self.vault_path / "Inbox"
+        self.inbox = self.vault_path / "Inbox" / "email"
         self.archive = self.inbox / "Archive"
         self.archive.mkdir(parents=True, exist_ok=True)
         self._processed_file = self.inbox / ".processed_inbox.json"
+
+        # Migrate processed file from old Inbox/ root to new Inbox/email/ location
+        _old = self.vault_path / "Inbox" / ".processed_inbox.json"
+        if _old.exists() and not self._processed_file.exists():
+            shutil.move(str(_old), str(self._processed_file))
 
         # FIX: One lock file per JSON — prevents concurrent corruption
         self._lock = FileLock(str(self._processed_file) + ".lock")
@@ -34,7 +39,7 @@ class FileSystemWatcher(BaseWatcher):
 
     def _check_write_permissions(self):
         """Verify all required directories are writable before starting."""
-        for path in [self.inbox, self.archive, self.needs_action]:
+        for path in [self.inbox, self.archive, self.needs_action / "email"]:
             path.mkdir(parents=True, exist_ok=True)
             test_file = path / ".write_test"
             try:
@@ -99,24 +104,12 @@ class FileSystemWatcher(BaseWatcher):
             if file.name.startswith("."):
                 continue
 
-            # Already processed — file should have been archived.
-            # If it's still sitting in Inbox (orphaned), move it to Archive now
-            # so it doesn't accumulate. This happens when gmail_watcher rewrites
-            # the same filename for a repeat sender after the original was archived.
+            # Already processed — original file stays in Inbox until approved/rejected.
+            # Skip silently; _cleanup_inbox_file() in task_processor handles archiving.
             if file.name in self.processed:
-                archive_path = self.archive / file.name
-                if not archive_path.exists():
-                    shutil.move(str(file), str(archive_path))
-                    self.logger.warning(
-                        f"Orphaned inbox file archived: {file.name} "
-                        "(already in processed set — likely a repeat-sender filename collision)"
-                    )
-                else:
-                    file.unlink()
-                    self.logger.warning(f"Duplicate orphaned file removed: {file.name}")
                 continue
 
-            task_file = self.needs_action / f"TASK_{file.name}.md"
+            task_file = self.needs_action / "email" / f"TASK_{file.name}.md"
             if not task_file.exists():
                 new_files.append(file)
 
@@ -200,15 +193,14 @@ File name: {file_path.name}
 - [ ] Move to Done
 """
 
-        # Step 1: Archive FIRST — prevents re-detection even if step 2 crashes
-        archive_path = self.archive / file_path.name
-        shutil.move(str(file_path), str(archive_path))
-
-        # Step 2: Create task file in Needs_Action
-        action_file = self.needs_action / f"TASK_{file_path.name}.md"
+        # Step 1: Create task file in Needs_Action/email/
+        email_needs_action = self.needs_action / "email"
+        email_needs_action.mkdir(parents=True, exist_ok=True)
+        action_file = email_needs_action / f"TASK_{file_path.name}.md"
         action_file.write_text(content, encoding="utf-8")
 
-        # Step 3: Persist to disk so restarts don't re-detect this file
+        # Step 2: Persist to disk so restarts don't re-detect this file
+        # Original file stays in Inbox/email/ until approved/rejected
         self._save_processed(file_path.name)
 
         return action_file

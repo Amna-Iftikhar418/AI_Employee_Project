@@ -1,7 +1,7 @@
 [project]
 name = "ai-employee-project"
-version = "0.1.0"
-description = "Add your description here"
+version = "1.0.0"
+description = "Autonomous AI Employee — monitors Gmail & WhatsApp, generates plans, routes through human-approval workflow, sends emails via MCP, and auto-publishes LinkedIn posts on a daily schedule."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -11,8 +11,18 @@ dependencies = [
     "google-api-python-client>=2.193.0",
     "google-auth>=2.49.1",
     "google-auth-oauthlib>=1.2.0",
+    "google-genai>=1.68.0",
+    "groq>=1.1.1",
+    "psutil>=7.2.2",
     "python-dotenv>=1.0.0",
     "requests>=2.32.5",
+    "schedule>=1.2.2",
     "uvicorn>=0.42.0",
+    "keyring>=25.0.0",
     "watchdog>=6.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
 ]

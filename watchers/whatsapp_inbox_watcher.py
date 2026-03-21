@@ -44,11 +44,16 @@ class WhatsAppInboxWatcher(BaseWatcher):
 
     def __init__(self, vault_path: str):
         super().__init__(vault_path, check_interval=10)
-        self.inbox = self.vault_path / "Inbox"
-        self.archive = self.inbox / "Archive"
+        self.inbox = self.vault_path / "Inbox" / "whatsapp"
+        self.archive = self.vault_path / "Inbox" / "Archive"
         self.logs_dir = self.vault_path / "Logs"
         self.dashboard_file = self.vault_path / "Dashboard.md"
         self._processed_file = self.inbox / PROCESSED_FILE_NAME
+
+        # Migrate processed file from old Inbox/ root to new Inbox/whatsapp/ location
+        _old = self.vault_path / "Inbox" / PROCESSED_FILE_NAME
+        if _old.exists() and not self._processed_file.exists():
+            shutil.move(str(_old), str(self._processed_file))
 
         # FIX: One lock file per JSON — prevents concurrent corruption
         self._lock = FileLock(str(self._processed_file) + ".lock")
@@ -68,7 +73,7 @@ class WhatsAppInboxWatcher(BaseWatcher):
 
     def _check_write_permissions(self):
         """Verify all required directories are writable before starting."""
-        for path in [self.inbox, self.archive, self.needs_action, self.logs_dir]:
+        for path in [self.inbox, self.archive, self.needs_action / "whatsapp", self.logs_dir]:
             test = path / ".write_test"
             try:
                 test.touch()
@@ -171,14 +176,14 @@ class WhatsAppInboxWatcher(BaseWatcher):
     # ------------------------------------------------------------------
 
     def check_for_updates(self) -> list:
-        """Return whatsapp_*.txt files in Inbox/ not yet processed."""
+        """Return *.txt files in Inbox/whatsapp/ not yet processed."""
         new_files = []
-        for file in self.inbox.glob("whatsapp_*.txt"):
+        for file in self.inbox.glob("*.txt"):
             if file.is_dir():
                 continue
             if file.name in self._processed:
                 continue
-            task_file = self.needs_action / f"TASK_{file.name}.md"
+            task_file = self.needs_action / "whatsapp" / f"TASK_{file.name}.md"
             if not task_file.exists():
                 new_files.append(file)
         return new_files
@@ -214,18 +219,17 @@ status: pending
 - [ ] Escalate if needed
 """
 
-        # 1. Archive FIRST — prevents re-detection on crash
-        archive_path = self.archive / file_path.name
-        shutil.move(str(file_path), str(archive_path))
-
-        # 2. Write TASK file
-        task_file = self.needs_action / f"TASK_{file_path.name}.md"
+        # 1. Write TASK file in Needs_Action/whatsapp/
+        # Original file stays in Inbox/whatsapp/ until approved/rejected
+        whatsapp_needs_action = self.needs_action / "whatsapp"
+        whatsapp_needs_action.mkdir(parents=True, exist_ok=True)
+        task_file = whatsapp_needs_action / f"TASK_{file_path.name}.md"
         task_file.write_text(content, encoding="utf-8")
 
-        # 3. Persist to dedup set
+        # 2. Persist to dedup set
         self._save_processed(file_path.name)
 
-        # 4. Update log and dashboard
+        # 3. Update log and dashboard
         self._write_log(file_path.name, sender)
         self._update_dashboard(file_path.name)
 

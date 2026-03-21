@@ -1,91 +1,257 @@
-# Personal AI Employee – Bronze Tier
+# Personal AI Employee — Silver Tier
 
-## System Overview
+> An autonomous AI Employee built with **Claude Code**, **Python watchers**, and an **Obsidian vault**.
+> Monitors Gmail and WhatsApp, reasons over incoming messages, writes structured plans,
+> routes every action through a **human approval gate**, sends emails via a local MCP server,
+> and auto-publishes LinkedIn posts on a daily schedule.
 
-This project builds a personal AI employee using:
+---
 
-- Obsidian vault for memory
-- Claude Code for reasoning
-- Python watchers for task detection
-- Agent Skills for task processing
+## What It Does
 
-## Folder Structure
+| Channel | Capability |
+|---|---|
+| **Gmail** | Polls every 30 s → reads emails → creates task → drafts reply → awaits approval → sends |
+| **WhatsApp** | Listens live → receives messages → creates task → drafts reply → awaits approval |
+| **LinkedIn** | Daily 09:00 auto-generates post via AI → awaits approval → publishes via Playwright |
+| **Email (MCP)** | Sends real emails through a local FastAPI MCP server using Gmail OAuth |
+| **Scheduler** | Daily LinkedIn post + Monday CEO Briefing auto-generated |
 
-```
-AI_Employee_Project
-├── vault/
-│   └── AI_Employee_Vault/
-│       ├── Inbox/              # Drop tasks here
-│       ├── Needs_Action/       # Tasks waiting for Claude
-│       ├── Plans/              # Execution plans (MANDATORY)
-│       ├── Done/               # Completed tasks
-│       ├── Logs/               # Activity logs
-│       ├── Skills/             # Agent Skills
-│       ├── Dashboard.md        # System status
-│       └── Company_Handbook.md # Operating rules
-└── watchers/
-    ├── base_watcher.py
-    ├── filesystem_watcher.py
-    └── run_watcher.py
-```
-
-## Workflow (REQUIRED)
-
-The Bronze Tier workflow MUST follow this exact pipeline:
-
-```
-Inbox → Needs_Action → Plans → Dashboard → Logs → Done
-```
-
-### Steps:
-
-1. **User creates task** in Inbox
-2. **Watcher detects task** → Creates TASK_ file in Needs_Action
-3. **Claude reads task** → Creates PLAN_ file in Plans/ (MANDATORY - NEVER SKIP)
-4. **Claude updates** Dashboard.md
-5. **Claude writes** log entry in Logs/
-6. **Claude moves** task to Done/
+---
 
 ## Architecture
 
-### Agent Skills
-
-All AI functionality is implemented as Agent Skills in `/Skills/`:
-
-- **basic_file_handler.md**: Processes tasks from Needs_Action folder
-  - Reads task metadata
-  - Creates execution plan (REQUIRED)
-  - Updates Dashboard
-  - Writes logs
-  - Moves task to Done
-
-### Watchers
-
-Python scripts that monitor for new tasks:
-
-- **filesystem_watcher.py**: Monitors Inbox folder for new files
-- **base_watcher.py**: Abstract base class for all watchers
-- **run_watcher.py**: Entry point to start watcher
-
-## How to Run
-
-### Start Watcher:
-
-```bash
-cd watchers
-python run_watcher.py
+```
+Gmail ──────────────────────────────────────────────────────────────────┐
+                                                                        │
+WhatsApp ───────────────────────────────────────────────────────────────┤
+                                                                        ▼
+                                                            Python Watchers
+                                                                        │
+                                                   vault/AI_Employee_Vault/Inbox/
+                                                                        │
+                                                    Needs_Action/   ◄── FileSystem Watcher
+                                                                        │
+                                               Claude (Agent Skills)   ─┘
+                                                   reads task → invokes skill
+                                                                        │
+                                                         Plans/   ◄── PLAN_*.md (MANDATORY)
+                                                                        │
+                                                   Pending_Approval/  ◄── human reviews
+                                                                        │
+                                                         Approved/   ◄── human approves
+                                                                        │
+                                              approved_watcher auto-executes
+                                                                        │
+                                                             Done/   ◄── task complete
+                                                                        │
+                                                   Dashboard.md + Logs/ updated
 ```
 
-### Start Claude:
+```
+Scheduler (09:00 daily)
+    └── creator_executor.py → PLAN + POST → Pending_Approval/linkedin/
+                                                    │
+                                            human approves
+                                                    │
+                                         Approved/linkedin/
+                                                    │
+                                   approved_watcher → linkedin_executor
+                                                    │
+                                         LinkedIn post published
+                                                    │
+                                            Done/linkedin/
+```
+
+---
+
+## Agent Skills (`.claude/skills/`)
+
+All AI logic is implemented as **Agent Skills** — Claude Code's native skill format.
+`CLAUDE.md` defines when each skill is triggered automatically.
+
+| Skill | Trigger |
+|---|---|
+| `gmail_handler` | `TASK_*.md` with `type: email_task` appears in `Needs_Action/email/` |
+| `whatsapp_handler` | `TASK_*.md` with `type: whatsapp_task` appears in `Needs_Action/whatsapp/` |
+| `generate_plan` | Any task that needs a structured `PLAN_*.md` before action |
+| `file_handler` | General file tasks in `Needs_Action/` |
+| `send_email` | Approved email tasks in `Approved/email/` |
+| `process_approved` | Any non-LinkedIn approved task |
+| `linkedin_post_creator` | User request or daily scheduler trigger |
+| `linkedin_publisher` | `LINKEDIN_POST_*.md` appears in `Approved/linkedin/` |
+
+---
+
+## Watchers (`watchers/`)
+
+All watchers inherit from `BaseWatcher` (abstract base class) and are started automatically by `main.py`:
+
+| Watcher | Purpose |
+|---|---|
+| `gmail_watcher.py` | Polls Gmail every 30 s → writes emails to `Inbox/email/` |
+| `filesystem_watcher.py` | Watches `Inbox/email/` → creates `TASK_*.md` in `Needs_Action/email/` |
+| `run_watcher.py` | Launcher for filesystem_watcher |
+| `task_processor.py` | Scans `Needs_Action/` → auto-generates plans → routes to `Pending_Approval/` |
+| `whatsapp_watcher.py` | Node.js WhatsApp client → writes messages to `Inbox/whatsapp/` |
+| `whatsapp_inbox_watcher.py` | Watches `Inbox/whatsapp/` → creates `TASK_*.md` in `Needs_Action/whatsapp/` |
+| `approved_watcher.py` | Watches `Approved/linkedin/` → auto-publishes via Playwright |
+| `scheduler.py` | Daily 09:00 LinkedIn post + Monday 08:00 CEO Briefing |
+
+---
+
+## MCP Server (`mcp_server.py`)
+
+Local **FastAPI** server on `http://127.0.0.1:8001`.
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /send-email` | Sends real email via Gmail API — requires `X-API-Key` header |
+| `GET /health` | Health check |
+
+**Security features:**
+- `X-API-Key` header authentication (timing-safe `hmac.compare_digest`)
+- Per-IP rate limiting (5 failures / 60 s window)
+- Email address regex validation
+- MIME header injection prevention (newline stripping)
+- Field length limits (subject ≤ 998 chars, body ≤ 10 MB)
+
+---
+
+## Vault Structure (`vault/AI_Employee_Vault/`)
+
+```
+vault/AI_Employee_Vault/
+├── Inbox/
+│   ├── email/              ← Gmail emails land here (raw .txt)
+│   └── whatsapp/           ← WhatsApp messages land here (raw .txt)
+├── Needs_Action/
+│   ├── email/              ← TASK_*.md waiting for Claude
+│   └── whatsapp/           ← TASK_*.md waiting for Claude
+├── Plans/
+│   ├── email/              ← PLAN_*.md (auto-generated, mandatory)
+│   ├── whatsapp/           ← PLAN_*.md
+│   └── linkedin/           ← PLAN_LINKEDIN_*.md
+├── Pending_Approval/       ← Awaiting human review
+│   ├── email/
+│   ├── whatsapp/
+│   └── linkedin/
+├── Approved/               ← Human approved — ready for execution
+│   ├── email/
+│   ├── whatsapp/
+│   └── linkedin/
+├── Rejected/               ← Human rejected
+├── Done/                   ← Completed tasks
+│   ├── email/
+│   ├── whatsapp/
+│   └── linkedin/
+├── Logs/                   ← Daily audit log: log_YYYY-MM-DD.md
+├── Briefings/              ← Auto-generated Monday CEO briefings
+├── Dashboard.md            ← Live activity feed (append-only)
+└── Company_Handbook.md     ← Operating rules all skills must follow
+```
+
+---
+
+## Human Approval Workflow
+
+Claude **never** sends emails or publishes LinkedIn posts without explicit human approval:
+
+```
+1. Claude creates PLAN_*.md  →  task moves to Pending_Approval/
+2. You review the plan and proposed response
+3. Move file to Approved/    →  approved_watcher auto-executes
+   OR
+   Move file to Rejected/    →  task archived, logged
+```
+
+---
+
+## Setup
+
+### 1. Install dependencies
+
+```bash
+uv sync
+npm install
+```
+
+### 2. Configure environment
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with your keys:
+
+| Variable | Required | Notes |
+|---|---|---|
+| `MCP_API_KEY` | ✅ | Generate: `python -c "import secrets; print(secrets.token_hex(32))"` |
+| `GMAIL_CREDENTIALS_PATH` | ✅ | Download from Google Cloud Console |
+| `GEMINI_API_KEY` | ✅ (one of) | Free at [aistudio.google.com](https://aistudio.google.com) |
+| `GROQ_API_KEY` | ✅ (one of) | Free at [console.groq.com](https://console.groq.com) |
+| `DRY_RUN` | Optional | Set `true` to test without sending real emails |
+
+### 3. Gmail OAuth (first run only)
+
+```bash
+uv run watchers/gmail_watcher.py
+# Browser opens → authorize → token.json saved automatically
+```
+
+### 4. LinkedIn login (for auto-publishing)
+
+```bash
+node linkedin_login.js
+# Browser opens → log in manually → session saved for Playwright
+```
+
+### 5. Start the full system
+
+```bash
+uv run watchers/main.py
+```
+
+Starts in order:
+1. MCP email server (port 8001)
+2. Gmail watcher
+3. Inbox → Needs_Action converter
+4. Task processor
+5. WhatsApp watcher + inbox watcher
+6. LinkedIn approved watcher
+7. Scheduler
+
+Press `Ctrl+C` to stop everything gracefully.
+
+### 6. Start Claude Code (second terminal)
 
 ```bash
 claude
 ```
 
+Claude loads `CLAUDE.md` automatically and knows all 8 skills.
+
+---
+
+## Key Design Decisions
+
+| Decision | Why |
+|---|---|
+| **Vault-first architecture** | All state is in plain markdown files — inspectable, editable, version-controllable |
+| **Human-in-the-loop mandatory** | No email or LinkedIn post ever executes without a file in `Approved/` |
+| **Plan before action** | Every task requires a `PLAN_*.md` with `## Proposed Response` — enforced by skills |
+| **FileLock on shared files** | `Dashboard.md` and daily logs are written by multiple processes — `filelock` prevents corruption |
+| **Atomic writes** | All JSON state files use write-to-.tmp + `os.replace()` — crash-safe |
+| **Auto-restart** | `main.py` watch loop restarts any crashed child process automatically |
+| **Dedup by message ID** | WhatsApp uses `message.id` (not content hash) — identical messages at different times both arrive |
+
+---
+
 ## Compliance Rules
 
-- **NEVER skip plan creation** - Plans/ folder must contain plan for every processed task
-- **NEVER write fake entries** - Dashboard and Logs must reflect actual actions
-- **ALWAYS follow Company_Handbook.md** - All actions must comply with defined rules
-- **Financial actions require approval**
-- **Communication actions require approval**
+- **NEVER skip plan creation** — every action requires a `PLAN_*.md` first
+- **NEVER send emails without approval** — all communication goes through `Pending_Approval/`
+- **NEVER post to LinkedIn without approval** — posts always require human sign-off
+- **ALWAYS append to logs and Dashboard** — never overwrite existing entries
+- **ALWAYS follow `Company_Handbook.md`** — all skills operate within defined rules
+- **Financial and communication actions require approval** — no exceptions

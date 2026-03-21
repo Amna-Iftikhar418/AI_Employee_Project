@@ -47,7 +47,7 @@ Do NOT simulate, describe, or explain actions — execute them.
 - Open task file from `Approved/`
 - Extract:
   - `task_name` (strip `TASK_` prefix from filename)
-  - `type` (email_task / whatsapp_task / telegram_task / file_task)
+  - `type` (email_task / whatsapp_task / file_task)
   - `plan_reference` (which PLAN file to use)
   - `original intent` from task body
 
@@ -88,10 +88,6 @@ Execute the action defined in the Plan based on task type:
 **For whatsapp_task:**
 - Record the approved action/reply (from Plan's "Suggested Action" section)
 - Log that action is approved and ready
-
-**For telegram_task:**
-- Record the approved bot reply (from Plan's "Proposed Reply" section)
-- Note: chat_id and message_id are in the Plan for the operator to send via bot
 
 **For file_task / general task:**
 - Execute the steps listed in Plan's "Steps" section

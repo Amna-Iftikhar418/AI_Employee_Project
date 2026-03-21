@@ -75,7 +75,7 @@ class GmailInboxWatcher:
         )
         self.inbox_path = Path(
             inbox_path
-            or os.getenv("INBOX_PATH", "vault/AI_Employee_Vault/Inbox")
+            or os.getenv("INBOX_PATH", "vault/AI_Employee_Vault/Inbox/email")
         )
         self.processed_file = Path(
             processed_file
@@ -153,15 +153,68 @@ class GmailInboxWatcher:
     # Authentication
     # ------------------------------------------------------------------
 
-    def _authenticate(self) -> Credentials:
-        """Authenticate with Gmail API using OAuth."""
-        creds = None
+    # ── Keyring helpers ───────────────────────────────────────────────────────
+
+    _KEYRING_SERVICE  = "ai_employee"
+    _KEYRING_USERNAME = "gmail_oauth_token"
+
+    def _save_token(self, creds: Credentials) -> None:
+        """Save OAuth token.
+
+        Strategy (most secure first):
+          1. Windows  → Windows Credential Manager (DPAPI-encrypted, user-scoped)
+                        + file copy as fallback
+          2. Unix     → file at token_path with 0o600 permissions
+        """
+        token_json = creds.to_json()
+
+        if sys.platform == "win32":
+            try:
+                import keyring
+                keyring.set_password(self._KEYRING_SERVICE, self._KEYRING_USERNAME, token_json)
+                logger.info("Token saved to Windows Credential Manager (DPAPI-encrypted)")
+                # Keep a file copy so mcp_server.py can also load it on restart
+                self._write_token_file(token_json)
+                return
+            except Exception as e:
+                logger.warning(f"keyring save failed ({e}) — saving to file only")
+
+        self._write_token_file(token_json)
+        try:
+            os.chmod(str(self.token_path), 0o600)
+            logger.info(f"Token saved to {self.token_path} (permissions: 0600)")
+        except OSError:
+            logger.warning("Could not set token permissions to 0600 (Windows) — token is still saved")
+
+    def _write_token_file(self, token_json: str) -> None:
+        """Atomically write token JSON to file."""
+        tmp_token = self.token_path.with_suffix(".tmp")
+        tmp_token.write_text(token_json, encoding="utf-8")
+        os.replace(str(tmp_token), str(self.token_path))
+
+    def _load_token(self) -> Credentials | None:
+        """Load OAuth token — Windows Credential Manager first, then file."""
+        if sys.platform == "win32":
+            try:
+                import keyring
+                token_json = keyring.get_password(self._KEYRING_SERVICE, self._KEYRING_USERNAME)
+                if token_json:
+                    logger.info("Token loaded from Windows Credential Manager")
+                    return Credentials.from_authorized_user_info(
+                        json.loads(token_json), SCOPES
+                    )
+            except Exception as e:
+                logger.warning(f"keyring load failed ({e}) — trying file")
 
         if self.token_path.exists():
-            creds = Credentials.from_authorized_user_file(
-                str(self.token_path), SCOPES
-            )
-            logger.info("Loaded existing OAuth token")
+            logger.info("Loaded existing OAuth token from file")
+            return Credentials.from_authorized_user_file(str(self.token_path), SCOPES)
+
+        return None
+
+    def _authenticate(self) -> Credentials:
+        """Authenticate with Gmail API using OAuth."""
+        creds = self._load_token()
 
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
@@ -179,23 +232,7 @@ class GmailInboxWatcher:
                 )
                 creds = flow.run_local_server(port=0)
 
-            # FIX: Atomic token write — write to .tmp then os.replace()
-            # Prevents a corrupted token.json if the process crashes mid-write
-            tmp_token = self.token_path.with_suffix(".tmp")
-            tmp_token.write_text(creds.to_json())
-            os.replace(str(tmp_token), str(self.token_path))
-
-            # FIX: Restrict file permissions so only the owner can read the token
-            # (no-op on Windows, but correct on Linux/macOS)
-            try:
-                os.chmod(str(self.token_path), 0o600)
-            except OSError:
-                logger.warning(
-                    "Could not set token file permissions to 0600 "
-                    "(expected on Windows — token is still saved)"
-                )
-
-            logger.info(f"Token saved securely to {self.token_path}")
+            self._save_token(creds)
 
         return creds
 
@@ -340,7 +377,7 @@ class GmailInboxWatcher:
 
     def _get_filter_query(self) -> str:
         """Build Gmail search query for unread emails."""
-        return "is:unread newer_than:1h"
+        return "is:unread newer_than:7d"
 
     def check_emails(self) -> list:
         """Check for unread emails matching filter criteria."""
@@ -380,6 +417,13 @@ class GmailInboxWatcher:
         msg_id = message["id"]
         try:
             service = self._get_service()
+
+            # Guard: skip if this Gmail ID was already processed (in-memory check)
+            # This catches restarts where processed_emails.json was preserved but
+            # _mark_as_read() had previously failed (email still shows as unread)
+            if msg_id in self.processed_ids:
+                logger.debug(f"Skipping already-processed email: {msg_id[:8]}...")
+                return
 
             # FIX: Persist ID first — prevents duplicate processing on restart
             self._save_processed_id(msg_id)

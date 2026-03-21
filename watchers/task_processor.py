@@ -9,6 +9,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from filelock import FileLock
+
 # ------------------------------------------------------------------
 # Structured rotating logger
 # ------------------------------------------------------------------
@@ -41,13 +43,39 @@ class TaskProcessor:
 
         self.require_approval_for_all = True
 
+        # Type-specific subdirs
+        self.email_needs_action    = self.needs_action_dir / "email"
+        self.whatsapp_needs_action = self.needs_action_dir / "whatsapp"
+        self.email_plans           = self.plans_dir / "email"
+        self.whatsapp_plans        = self.plans_dir / "whatsapp"
+        self.email_pending         = self.pending_approval_dir / "email"
+        self.whatsapp_pending      = self.pending_approval_dir / "whatsapp"
+        self.email_approved        = self.approved_dir / "email"
+        self.whatsapp_approved     = self.approved_dir / "whatsapp"
+        self.email_rejected        = self.rejected_dir / "email"
+        self.whatsapp_rejected     = self.rejected_dir / "whatsapp"
+        self.email_done            = self.done_dir / "email"
+        self.whatsapp_done         = self.done_dir / "whatsapp"
+
         for folder in [
             self.needs_action_dir,
+            self.email_needs_action,
+            self.whatsapp_needs_action,
             self.plans_dir,
+            self.email_plans,
+            self.whatsapp_plans,
             self.pending_approval_dir,
+            self.email_pending,
+            self.whatsapp_pending,
             self.approved_dir,
+            self.email_approved,
+            self.whatsapp_approved,
             self.rejected_dir,
+            self.email_rejected,
+            self.whatsapp_rejected,
             self.done_dir,
+            self.email_done,
+            self.whatsapp_done,
             self.logs_dir,
             self.inbox_dir,
         ]:
@@ -62,12 +90,16 @@ class TaskProcessor:
 
     def _check_write_permissions(self):
         for path in [
-            self.needs_action_dir,
-            self.plans_dir,
-            self.pending_approval_dir,
-            self.approved_dir,
-            self.rejected_dir,
-            self.done_dir,
+            self.email_needs_action,
+            self.whatsapp_needs_action,
+            self.email_plans,
+            self.whatsapp_plans,
+            self.email_pending,
+            self.whatsapp_pending,
+            self.email_approved,
+            self.whatsapp_approved,
+            self.email_done,
+            self.whatsapp_done,
             self.logs_dir,
         ]:
             test = path / ".write_test"
@@ -110,16 +142,20 @@ class TaskProcessor:
     def update_dashboard(self, task_name, status):
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         entry = f"\n- [{status}] {task_name} - {timestamp}"
-        with open(self.dashboard_file, "a", encoding="utf-8") as f:
-            f.write(entry)
+        lock_path = str(self.dashboard_file.resolve()) + ".lock"
+        with FileLock(lock_path, timeout=10):
+            with open(self.dashboard_file, "a", encoding="utf-8") as f:
+                f.write(entry)
 
     def write_log(self, task_name, action, details=""):
         today = datetime.now().strftime("%Y-%m-%d")
         log_path = self.logs_dir / f"log_{today}.md"
+        lock_path = str(log_path.resolve()) + ".lock"
         timestamp = datetime.now().strftime("%H:%M:%S")
         entry = f"\n[{timestamp}] {action}: {task_name} - {details}"
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(entry)
+        with FileLock(lock_path, timeout=10):
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(entry)
 
     # ------------------------------------------------------------------
     # Plan helpers
@@ -145,7 +181,14 @@ class TaskProcessor:
 
         # Pull out email address
         email_match = re.search(r"[\w.+-]+@[\w.-]+\.\w+", sender_raw)
-        sender_email = email_match.group(0) if email_match else sender_raw or "client@example.com"
+        if email_match:
+            sender_email = email_match.group(0)
+        elif sender_raw.strip():
+            logger.warning(f"Could not extract email from sender '{sender_raw}' — using raw value")
+            sender_email = sender_raw.strip()
+        else:
+            logger.error("No sender email found in task file — plan will have empty 'from' field")
+            sender_email = ""
 
         # Pull out display name / first name
         name_match = re.match(r'^"?([^"<@]+?)"?\s*<', sender_raw)
@@ -192,7 +235,7 @@ class TaskProcessor:
     def _generate_email_plan(self, task_file: Path):
         """Generate a valid plan file directly from task content — no Claude CLI needed."""
         task_name = self.extract_task_name(task_file)
-        plan_path = self.plans_dir / f"PLAN_{task_name}.md"
+        plan_path = self.email_plans / f"PLAN_{task_name}.md"
 
         if plan_path.exists() and self._plan_is_valid(plan_path):
             return  # already good
@@ -266,6 +309,86 @@ pending
         plan_path.write_text(plan_content, encoding="utf-8")
         logger.info(f"Plan generated: {plan_path.name}")
 
+    def _generate_whatsapp_plan(self, task_file: Path):
+        """Generate a plan file for a WhatsApp task."""
+        task_name = self.extract_task_name(task_file)
+        plan_path = self.whatsapp_plans / f"PLAN_{task_name}.md"
+
+        if plan_path.exists():
+            return
+
+        content = task_file.read_text(encoding="utf-8")
+        created = datetime.now().isoformat()
+
+        # Extract sender
+        sender = "Unknown"
+        sender_match = re.search(r"\*\*From:\*\*\s*(.+)", content)
+        if sender_match:
+            sender = sender_match.group(1).strip()
+
+        # Extract body
+        body = ""
+        body_match = re.search(r"##\s+Body\s*\n(.*?)(?=\n##\s|\Z)", content, re.DOTALL)
+        if body_match:
+            body = body_match.group(1).strip()
+
+        # Detect priority keywords
+        text_lower = body.lower()
+        keywords = [kw for kw in ["urgent", "invoice", "payment", "asap", "help"] if kw in text_lower]
+        priority = "high" if any(kw in keywords for kw in ["urgent", "invoice", "payment", "asap"]) else "normal"
+        keywords_str = ", ".join(keywords) if keywords else "none"
+
+        first_name = sender.split()[0] if sender != "Unknown" else "there"
+
+        plan_content = f"""# Plan: {task_name}
+
+---
+type: whatsapp_task
+source: whatsapp
+from: {sender}
+keywords: [{keywords_str}]
+priority: {priority}
+created: {created}
+status: pending
+---
+
+## Objective
+Respond to WhatsApp message from {sender}
+
+## Extracted Data
+- sender: {sender}
+- intent: reply_needed
+- key info: {body[:120].replace(chr(10), ' ') if body else 'None'}
+- urgency: {priority.capitalize()}
+- keywords: {keywords_str}
+
+## Action Plan
+- [ ] Review WhatsApp message
+- [ ] Send appropriate reply
+- [ ] Log outcome
+
+## Proposed Response
+
+Hi {first_name},
+
+Thank you for your message. We have received it and will get back to you shortly.
+
+Best regards,
+AI Employee
+
+## Approval Required
+Yes — WhatsApp reply requires human approval before sending.
+
+## Expected Outcome
+Reply sent to {sender} acknowledging their message.
+
+## Status
+pending
+"""
+
+        plan_path.write_text(plan_content, encoding="utf-8")
+        logger.info(f"WhatsApp plan generated: {plan_path.name}")
+
     # ------------------------------------------------------------------
     # Retry helpers
     # ------------------------------------------------------------------
@@ -276,13 +399,50 @@ pending
         return int(match.group(1)) if match else 0
 
     def _increment_retry_count(self, file_path):
-        content = file_path.read_text(encoding="utf-8")
-        count = self._get_retry_count(file_path)
-        if "retry_count:" in content:
-            content = re.sub(r"retry_count:\s*\d+", f"retry_count: {count + 1}", content)
-        else:
-            content = content.replace("---", f"---\nretry_count: {count + 1}", 1)
-        file_path.write_text(content, encoding="utf-8")
+        lock_path = str(file_path) + ".lock"
+        with FileLock(lock_path, timeout=10):
+            content = file_path.read_text(encoding="utf-8")
+            count = self._get_retry_count(file_path)
+            if "retry_count:" in content:
+                content = re.sub(r"retry_count:\s*\d+", f"retry_count: {count + 1}", content)
+            else:
+                content = content.replace("---", f"---\nretry_count: {count + 1}", 1)
+            file_path.write_text(content, encoding="utf-8")
+
+    # ------------------------------------------------------------------
+    # Inbox cleanup (called on approve/reject)
+    # ------------------------------------------------------------------
+
+    def _cleanup_inbox_file(self, task_file_path: Path):
+        """Archive original inbox file and remove task from Needs_Action if still present."""
+        try:
+            content = task_file_path.read_text(encoding="utf-8")
+        except Exception:
+            return
+
+        orig_match = re.search(r"original_file:\s*(.+)", content)
+        type_match = re.search(r"^type:\s*(\S+)", content, re.MULTILINE)
+        if not orig_match:
+            return
+
+        original_filename = orig_match.group(1).strip()
+        task_type = type_match.group(1).strip() if type_match else "email_task"
+
+        inbox_subdir = self.inbox_dir / ("whatsapp" if task_type == "whatsapp_task" else "email")
+        archive_dir = self.inbox_dir / "Archive"
+        archive_dir.mkdir(exist_ok=True)
+
+        inbox_file = inbox_subdir / original_filename
+        if inbox_file.exists():
+            shutil.move(str(inbox_file), str(archive_dir / original_filename))
+            logger.info(f"Archived inbox file: {original_filename}")
+
+        # Safety: remove from Needs_Action subfolder if still present
+        na_subdir = self.whatsapp_needs_action if task_type == "whatsapp_task" else self.email_needs_action
+        na_file = na_subdir / task_file_path.name
+        if na_file.exists():
+            na_file.unlink()
+            logger.info(f"Removed from Needs_Action: {task_file_path.name}")
 
     # ------------------------------------------------------------------
     # Task routing
@@ -290,36 +450,49 @@ pending
 
     def process_task_file(self, task_file_path):
         task_name = self.extract_task_name(task_file_path)
-        plan_path = self.plans_dir / f"PLAN_{task_name}.md"
         task_type = self.get_task_type(task_file_path)
 
         if task_type == "email_task":
+            plan_path = self.email_plans / f"PLAN_{task_name}.md"
+            pending_dir = self.email_pending
             # Generate plan if missing or invalid
             if not plan_path.exists() or not self._plan_is_valid(plan_path):
                 self._generate_email_plan(task_file_path)
                 return  # next loop cycle will route it
 
-        elif not plan_path.exists():
-            return  # non-email tasks still need a plan externally
+        elif task_type == "whatsapp_task":
+            plan_path = self.whatsapp_plans / f"PLAN_{task_name}.md"
+            pending_dir = self.whatsapp_pending
+            # Generate plan if missing or invalid
+            if not plan_path.exists() or not self._plan_is_valid(plan_path):
+                self._generate_whatsapp_plan(task_file_path)
+                return  # next loop cycle will route it
+
+        else:
+            plan_path = self.plans_dir / f"PLAN_{task_name}.md"
+            pending_dir = self.pending_approval_dir
+            if not plan_path.exists():
+                return  # other task types still need a plan externally
 
         current_status = self.get_file_status(task_file_path)
         if current_status in ("rejected", "completed", "pending_approval", "awaiting_approval"):
             return
 
-        logger.info(f"Plan ready — routing task to Pending_Approval: {task_name}")
+        logger.info(f"Routing task to Pending_Approval: {task_name}")
 
         # Inject metadata if missing
         content = task_file_path.read_text(encoding="utf-8")
         if "plan_reference:" not in content:
+            reason = "whatsapp_reply_requires_approval" if task_type == "whatsapp_task" else "email_reply_requires_approval"
             content = content.replace(
                 "---",
-                f"---\nplan_reference: PLAN_{task_name}.md\nreason: email_reply_requires_approval",
+                f"---\nplan_reference: PLAN_{task_name}.md\nreason: {reason}",
                 1,
             )
         task_file_path.write_text(content, encoding="utf-8")
 
         self.update_task_status(task_file_path, "awaiting_approval")
-        target = self.pending_approval_dir / task_file_path.name
+        target = pending_dir / task_file_path.name
         shutil.move(str(task_file_path), str(target))
 
         self.write_log(task_name, "PENDING_APPROVAL", "Waiting for user decision")
@@ -334,12 +507,17 @@ pending
 
         task_type = self.get_task_type(task_file_path)
 
+        # Archive original inbox file and clean up Needs_Action
+        self._cleanup_inbox_file(task_file_path)
+
+        done_dir = self.whatsapp_done if task_type == "whatsapp_task" else self.email_done
+
         if task_type == "email_task":
             logger.info(f"Email task approved — sending: {task_name}")
             self.update_task_status(task_file_path, "processing")
             project_root = str(Path(__file__).parent.parent)
             result = subprocess.run(
-                [sys.executable, ".claude/commands/send_email_executor.py", task_file_path.name],
+                [sys.executable, ".claude/commands/send_email_executor.py", str(task_file_path.resolve())],
                 capture_output=True,
                 text=True,
                 cwd=project_root,
@@ -347,20 +525,22 @@ pending
             if result.returncode == 0:
                 logger.info(f"Email sent successfully: {task_name}")
             else:
-                logger.error(f"Email send failed for {task_name}: {result.stderr[:300]}")
-                retry_count = self._get_retry_count(task_file_path)
-                if retry_count < 3:
-                    self._increment_retry_count(task_file_path)
-                    self.update_task_status(task_file_path, "awaiting_approval")
-                    logger.warning(f"Email send failed — retry {retry_count + 1}/3 for {task_name}")
-                else:
-                    self.update_task_status(task_file_path, "failed")
-                    self.write_log(task_name, "FAILED", f"Max retries (3) reached — client NOT notified. Manual fix required.")
-                    logger.error(f"Max retries reached — email NOT sent to client: {task_name}")
+                logger.error(f"Email send failed for {task_name}:\n{result.stderr}")
+                lock_path = str(task_file_path) + ".lock"
+                with FileLock(lock_path, timeout=10):
+                    retry_count = self._get_retry_count(task_file_path)
+                    if retry_count < 3:
+                        self._increment_retry_count(task_file_path)
+                        self.update_task_status(task_file_path, "awaiting_approval")
+                        logger.warning(f"Email send failed — retry {retry_count + 1}/3 for {task_name}")
+                    else:
+                        self.update_task_status(task_file_path, "failed")
+                        self.write_log(task_name, "FAILED", "Max retries (3) reached — client NOT notified. Manual fix required.")
+                        logger.error(f"Max retries reached — email NOT sent to client: {task_name}")
         else:
             logger.info(f"Processing approved task: {task_name}")
             self.update_task_status(task_file_path, "completed")
-            target = self.done_dir / task_file_path.name
+            target = done_dir / task_file_path.name
             shutil.move(str(task_file_path), str(target))
             self.update_dashboard(task_name, "Completed")
             self.write_log(task_name, "EXECUTED", "Approved and completed")
@@ -375,6 +555,10 @@ pending
 
         logger.info(f"Rejected task: {task_name}")
         self.update_task_status(task_file_path, "rejected")
+
+        # Archive original inbox file and clean up Needs_Action
+        self._cleanup_inbox_file(task_file_path)
+
         self.update_dashboard(task_name, "Rejected")
         self.write_log(task_name, "REJECTED", "Task rejected by user")
 
@@ -388,13 +572,13 @@ pending
 
         while True:
             try:
-                for file in self.needs_action_dir.glob("TASK_*.md"):
+                for file in list(self.email_needs_action.glob("TASK_*.md")) + list(self.whatsapp_needs_action.glob("TASK_*.md")):
                     self.process_task_file(file)
 
-                for file in self.approved_dir.glob("TASK_*.md"):
+                for file in list(self.email_approved.glob("TASK_*.md")) + list(self.whatsapp_approved.glob("TASK_*.md")):
                     self.process_approved_task(file)
 
-                for file in self.rejected_dir.glob("TASK_*.md"):
+                for file in list(self.email_rejected.glob("TASK_*.md")) + list(self.whatsapp_rejected.glob("TASK_*.md")):
                     self.process_rejected_task(file)
 
                 time.sleep(check_interval)

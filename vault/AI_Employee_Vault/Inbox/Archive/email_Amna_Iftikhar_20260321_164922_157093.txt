@@ -1,0 +1,27 @@
+From: Amna Iftikhar <amnaiftikhar413@gmail.com>
+Subject: Follow-up on System Workflow and Email Monitoring
+
+Body:
+Dear Team,
+
+I hope this message finds you well.
+
+I wanted to follow up regarding the current setup of our AI Employee
+system, specifically the email monitoring process. At present, the system
+polls Gmail every 30 seconds to check for new messages and initiate the
+workflow pipeline.
+
+While this approach is functional, I would like to confirm whether this is
+the most efficient method or if there are recommended alternatives, such as
+event-driven mechanisms, to improve responsiveness and reduce unnecessary
+API calls.
+
+Additionally, I would appreciate any suggestions on optimizing the
+transition of tasks from inbox detection to the subsequent processing
+stages.
+
+Thank you for your guidance and support.
+
+Best regards,
+Amna
+

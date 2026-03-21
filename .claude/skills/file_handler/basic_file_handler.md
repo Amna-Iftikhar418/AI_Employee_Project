@@ -88,60 +88,34 @@ Plans/PLAN_<task_name>.md
 
 #### Rules:
 - If file exists → DO NOT overwrite → continue
-- Otherwise → CREATE new file using `.claude/skills/generate_plan.md`
+- Otherwise → CREATE new file
 
-#### HOW TO GENERATE THE PLAN:
+#### REQUIRED FORMAT:
 
-Follow `.claude/skills/generate_plan.md` exactly.
-
-The plan MUST contain all of these sections:
-
-```markdown
 # Plan: <task_name>
 
 ---
-type: file_task
-source: inbox
-original_file: <filename>
 created: <ISO timestamp>
 status: pending
+source: Needs_Action/<task_filename>
 ---
 
 ## Objective
-(What this file requires — specific, not generic)
+A precise, actionable goal derived from the task content. Must include:
+- WHAT needs to be done
+- WHO/WHERE (if applicable)
+- Any deadline or priority
 
-## Extracted Data
-- type: file_task
-- sender: (if identifiable from content)
-- intent: (what action the file implies)
-- key info: (any data found in file content)
-- urgency: Normal
-- keywords: (any detected)
-
-## Action Plan
-- [ ] <Specific step 1>
-- [ ] <Specific step 2>
-- [ ] <Specific step 3>
-
-## Proposed Response
-N/A — no external reply needed for this file task.
-
-(If file content requires a response after review, update this section.)
-
-## Approval Required
-<yes/no + reason>
-
-## Expected Outcome
-<What success looks like>
+## Steps
+- [ ] Analyze task
+- [ ] Execute required actions
+- [ ] Update system records
 
 ## Compliance Notes
 - Follow Company_Handbook.md
 
 ## Status
 pending
-```
-
-**FAIL CONDITION: If `## Proposed Response` is missing → do NOT save plan → STOP**
 
 ---
 
@@ -211,18 +185,14 @@ After Plan creation, check if task involves sensitive operations:
 
 ---
 
-### Step 5 — Execution & Dashboard Update
-
 Execute task actions and append to Dashboard.md:
 
-```markdown
 ## Recent Activity
 
 - Task detected: <task_name>
 - Plan created: PLAN_<task_name>.md
 - Status: executed
 - Date: YYYY-MM-DD
-```
 
 Rules:
 - Append only (do NOT overwrite full file)
@@ -242,7 +212,6 @@ Logs/YYYY-MM-DD.md
 
 #### Format:
 
-```markdown
 ## <ISO timestamp> — <task_name>
 
 - Task: <task_filename>
@@ -252,7 +221,6 @@ Logs/YYYY-MM-DD.md
   - Dashboard updated
 - Dashboard Update: confirmed
 - Status: processed
-```
 
 ---
 
@@ -260,9 +228,7 @@ Logs/YYYY-MM-DD.md
 
 Modify task metadata:
 
-```yaml
 status: processed
-```
 
 ---
 
@@ -270,9 +236,7 @@ status: processed
 
 Move file:
 
-```
 Needs_Action/<task_file> → Done/<task_file>
-```
 
 Rules:
 - MUST move file

@@ -50,6 +50,17 @@ function createClient() {
         // FIX: Reset reconnect counter once client is fully ready
         reconnectAttempts = 0;
         process.stderr.write('[whatsapp_client] Ready! Listening for messages...\n');
+
+        // Keepalive: prevents the Node.js event loop from emptying after ready.
+        // Without this, Node exits cleanly (code 0) after a few seconds because
+        // no I/O is pending — the WhatsApp WebSocket alone is not enough to hold
+        // the event loop on all Node.js versions.
+        if (!global._keepaliveTimer) {
+            global._keepaliveTimer = setInterval(() => {
+                process.stderr.write('[whatsapp_client] Heartbeat — still connected.\n');
+            }, 30000);
+            global._keepaliveTimer.unref(); // Don't prevent graceful shutdown
+        }
     });
 
     client.on('auth_failure', (msg) => {
@@ -94,7 +105,8 @@ function createClient() {
 
             if (!text.trim()) return;
 
-            const output = JSON.stringify({ sender, text: text.trim() });
+            const msgId = message.id?.id || message.id?._serialized || '';
+            const output = JSON.stringify({ sender, text: text.trim(), message_id: msgId });
             process.stdout.write(output + '\n');
 
             process.stderr.write(

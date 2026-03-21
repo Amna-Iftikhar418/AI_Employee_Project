@@ -32,19 +32,20 @@ from pathlib import Path
 
 import requests
 from dotenv import load_dotenv
+from filelock import FileLock
 
 # ── Environment ──────────────────────────────────────────────────────────────
 load_dotenv()
 
 MCP_API_KEY = os.getenv("MCP_API_KEY")
-MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8000")
+MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8001")
 DRY_RUN = os.getenv("DRY_RUN", "false").strip().lower() == "true"
 
 # ── Vault paths ───────────────────────────────────────────────────────────────
 VAULT = Path("vault/AI_Employee_Vault")
-APPROVED_DIR = VAULT / "Approved"
-DONE_DIR = VAULT / "Done"
-PLANS_DIR = VAULT / "Plans"
+APPROVED_DIR = VAULT / "Approved" / "email"
+DONE_DIR = VAULT / "Done" / "email"
+PLANS_DIR = VAULT / "Plans" / "email"
 LOGS_DIR = VAULT / "Logs"
 DASHBOARD = VAULT / "Dashboard.md"
 
@@ -223,11 +224,12 @@ def update_task_status(task_file: Path, new_status: str, extra_fields: dict = No
 
 
 def write_log(task_name: str, action: str, details: list[str], status: str):
-    """Append a structured entry to today's log file."""
+    """Append a structured entry to today's log file (file-locked for concurrent safety)."""
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
     today = datetime.now().strftime("%Y-%m-%d")
     timestamp = datetime.now().isoformat(timespec="seconds")
     log_file = LOGS_DIR / f"log_{today}.md"
+    lock_path = str(log_file.resolve()) + ".lock"
 
     detail_lines = "\n".join(f"  - {d}" for d in details)
     entry = f"""
@@ -238,13 +240,14 @@ def write_log(task_name: str, action: str, details: list[str], status: str):
 - Actions Performed:
 {detail_lines}
 """
-    with open(log_file, "a", encoding="utf-8") as f:
-        f.write(entry)
+    with FileLock(lock_path, timeout=10):
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(entry)
     logger.info(f"Log written: {log_file.name}")
 
 
 def update_dashboard(task_name: str, to: str, subject: str, dry_run: bool):
-    """Append execution record to Dashboard.md."""
+    """Append execution record to Dashboard.md (file-locked for concurrent safety)."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     mode = " [DRY RUN]" if dry_run else ""
     entry = (
@@ -255,8 +258,10 @@ def update_dashboard(task_name: str, to: str, subject: str, dry_run: bool):
         f"- Executed by: send_email skill\n"
         f"- Date: {timestamp}\n"
     )
-    with open(DASHBOARD, "a", encoding="utf-8") as f:
-        f.write(entry)
+    lock_path = str(DASHBOARD.resolve()) + ".lock"
+    with FileLock(lock_path, timeout=10):
+        with open(DASHBOARD, "a", encoding="utf-8") as f:
+            f.write(entry)
     logger.info("Dashboard updated")
 
 
@@ -271,15 +276,18 @@ def move_to_done(task_file: Path) -> Path:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
-def run(task_filename: str) -> int:
+def run(task_path_str: str) -> int:
     """Execute the full send_email workflow. Returns exit code."""
-    task_file = APPROVED_DIR / task_filename
+    task_path = Path(task_path_str)
+    # Accept either a full path or a bare filename (fall back to APPROVED_DIR)
+    task_file = task_path if task_path.is_absolute() else APPROVED_DIR / task_path_str
+    task_filename = task_file.name
     task_name = None
 
     try:
         # ── Validate task file exists ─────────────────────────────────────────
         if not task_file.exists():
-            raise FileNotFoundError(f"Task file not found in Approved/: {task_file}")
+            raise FileNotFoundError(f"Task file not found: {task_file}")
 
         logger.info(f"Processing task: {task_filename}")
 
@@ -299,13 +307,15 @@ def run(task_filename: str) -> int:
         plan = load_plan(task_name)
 
         if not plan["to"]:
-            # Fallback to sender extracted from task body
-            raise ValueError("Recipient email missing in plan frontmatter")
-            # plan["to"] = task["original_sender"]
+            # Fallback: use sender extracted from task body
+            if task["original_sender"]:
+                plan["to"] = task["original_sender"]
+                logger.info("Recipient not in plan frontmatter — using original sender from task")
+            else:
+                raise ValueError("Recipient email missing in both plan frontmatter and task body")
 
-        logger.info(f"Sending to: {plan['to']}")
-        logger.info(f"Subject:    {plan['subject']}")
-        logger.info(f"Email body preview: {plan['body'][:200]}")
+        logger.info(f"Sending to: {plan['to'][:3]}***")
+        logger.info(f"Subject:    {plan['subject'][:60]}{'...' if len(plan['subject']) > 60 else ''}")
 
 
         # ── Step 3: Call MCP server ───────────────────────────────────────────
@@ -360,7 +370,7 @@ def run(task_filename: str) -> int:
             "subject": plan["subject"],
             "mcp_message": result["message"],
             "dry_run": is_dry,
-            "moved_to": f"Done/{task_filename}",
+            "moved_to": f"Done/email/{task_filename}",
         }
         print(json.dumps(output, indent=2))
         return 0
