@@ -11,6 +11,9 @@ from pathlib import Path
 
 from filelock import FileLock
 
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from vault_utils import append_log, append_dashboard
+
 # ------------------------------------------------------------------
 # Structured rotating logger
 # ------------------------------------------------------------------
@@ -141,21 +144,31 @@ class TaskProcessor:
 
     def update_dashboard(self, task_name, status):
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        entry = f"\n- [{status}] {task_name} - {timestamp}"
-        lock_path = str(self.dashboard_file.resolve()) + ".lock"
-        with FileLock(lock_path, timeout=10):
-            with open(self.dashboard_file, "a", encoding="utf-8") as f:
-                f.write(entry)
+        append_dashboard(self.dashboard_file, f"- [{status}] {task_name} - {timestamp}")
 
     def write_log(self, task_name, action, details=""):
-        today = datetime.now().strftime("%Y-%m-%d")
-        log_path = self.logs_dir / f"log_{today}.md"
-        lock_path = str(log_path.resolve()) + ".lock"
         timestamp = datetime.now().strftime("%H:%M:%S")
-        entry = f"\n[{timestamp}] {action}: {task_name} - {details}"
-        with FileLock(lock_path, timeout=10):
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(entry)
+        append_log(self.logs_dir, f"[{timestamp}] {action}: {task_name} - {details}")
+
+    def run_claude_skill(self, skill_name: str, file_path: Path):
+        """Invoke a Claude skill headlessly via the CLI."""
+        try:
+            prompt = (
+                f"Run the {skill_name} skill on this file:\n\n"
+                f"{file_path}\n\n"
+                "Follow all project instructions and update the plan if needed."
+            )
+            subprocess.run(
+                ["claude", "-p", prompt, "--allowedTools", "all"],
+                cwd=str(Path(__file__).parent.parent),
+                capture_output=True,
+                text=True,
+                timeout=300,
+                shell=True if sys.platform == "win32" else False,
+            )
+            logger.info(f"Claude skill executed: {skill_name} for {file_path.name}")
+        except Exception as e:
+            logger.error(f"Failed to run Claude skill {skill_name}: {e}")
 
     # ------------------------------------------------------------------
     # Plan helpers
@@ -281,7 +294,7 @@ Respond to {data['sender_raw'] or data['sender_email']} regarding: {data['subjec
 
 ## Proposed Response
 
-Subject: Re: {data['subject']}
+Subject: {data['subject']}
 
 Dear {data['first_name']},
 
@@ -290,7 +303,7 @@ Thank you for your email. We have received your message and are reviewing it car
 We will get back to you with a detailed response as soon as possible. Please do not hesitate to reach out if you need anything in the meantime.
 
 Best regards,
-AI Employee
+Amna Iftikhar
 
 ## Approval Required
 Yes — email reply requires human approval before sending.
@@ -374,7 +387,7 @@ Hi {first_name},
 Thank you for your message. We have received it and will get back to you shortly.
 
 Best regards,
-AI Employee
+Amna Iftikhar
 
 ## Approval Required
 Yes — WhatsApp reply requires human approval before sending.
@@ -455,17 +468,17 @@ pending
         if task_type == "email_task":
             plan_path = self.email_plans / f"PLAN_{task_name}.md"
             pending_dir = self.email_pending
-            # Generate plan if missing or invalid
+            # Let Claude generate the plan directly from the raw task file
             if not plan_path.exists() or not self._plan_is_valid(plan_path):
-                self._generate_email_plan(task_file_path)
+                self.run_claude_skill("gmail_handler", task_file_path)
                 return  # next loop cycle will route it
 
         elif task_type == "whatsapp_task":
             plan_path = self.whatsapp_plans / f"PLAN_{task_name}.md"
             pending_dir = self.whatsapp_pending
-            # Generate plan if missing or invalid
+            # Let Claude generate the plan directly from the raw task file
             if not plan_path.exists() or not self._plan_is_valid(plan_path):
-                self._generate_whatsapp_plan(task_file_path)
+                self.run_claude_skill("whatsapp_handler", task_file_path)
                 return  # next loop cycle will route it
 
         else:
@@ -489,6 +502,15 @@ pending
                 f"---\nplan_reference: PLAN_{task_name}.md\nreason: {reason}",
                 1,
             )
+
+        # Inject the Proposed Response from the Plan file inline so the reviewer
+        # sees the full draft reply without needing to open a separate Plan file.
+        if "## Proposed Response" not in content and plan_path.exists():
+            plan_text = plan_path.read_text(encoding="utf-8")
+            match = re.search(r"(## Proposed Response\s*\n.*?)(?=\n## |\Z)", plan_text, re.DOTALL)
+            if match:
+                content = content.rstrip() + "\n\n" + match.group(1).strip() + "\n"
+
         task_file_path.write_text(content, encoding="utf-8")
 
         self.update_task_status(task_file_path, "awaiting_approval")

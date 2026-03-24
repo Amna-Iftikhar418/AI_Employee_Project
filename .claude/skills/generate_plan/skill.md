@@ -1,3 +1,8 @@
+---
+name: generate_plan
+description: Create a structured PLAN file for any task before action is taken. Plan must include Objective, Action Steps, Proposed Response, and Approval Required sections. Generic plans are forbidden.
+---
+
 You are NOT allowed to create generic plans.
 
 STRICT RULES:

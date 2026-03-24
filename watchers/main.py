@@ -4,6 +4,7 @@ Production-grade launcher for the AI Employee system.
 
 Guarantees:
   - Single instance via a PID lock file
+  - OneDrive detection warning on startup
   - Auto port cleanup (kills whatever holds port 8001)
   - WhatsApp Chrome SingletonLock removed before start
   - Graceful SIGINT / SIGTERM shutdown (no zombie processes)
@@ -42,16 +43,107 @@ _processes: list[subprocess.Popen] = []
 
 
 # =============================================================================
-# 1. SINGLE INSTANCE LOCK
+# 1. ONEDRIVE DETECTION
+# =============================================================================
+
+def _check_onedrive() -> None:
+    """Warn if the project is running from inside a OneDrive-synced folder.
+
+    OneDrive continuously syncs files in real-time. This causes:
+      - PermissionError when writing temp/lock files (OneDrive holds file handles)
+      - File locking conflicts between our FileLock and OneDrive's sync engine
+      - Intermittent write failures on .processed_*.json files
+      - Random 'Access is denied' errors on .write_test files
+
+    This function does NOT stop the system — it warns the user and continues.
+    If you see permission errors, move the project to the suggested safe path.
+    """
+    root_str = str(ROOT).lower()
+
+    # Detect common OneDrive folder patterns
+    onedrive_indicators = [
+        "onedrive",
+        "one drive",
+        "skydrive",
+    ]
+
+    is_onedrive = any(indicator in root_str for indicator in onedrive_indicators)
+
+    if is_onedrive:
+        log.warning("=" * 60)
+        log.warning("  WARNING  ONEDRIVE DETECTED — PERMISSION ISSUES LIKELY")
+        log.warning("=" * 60)
+        log.warning(f"  Current path : {ROOT}")
+        log.warning("")
+        log.warning("  Running inside OneDrive causes:")
+        log.warning("    * PermissionError on .write_test files")
+        log.warning("    * File locking conflicts with sync engine")
+        log.warning("    * Random 'Access is denied' errors")
+        log.warning("")
+        log.warning("  RECOMMENDED FIX:")
+        log.warning("    Move the project to: C:\\AI_Employee_Project")
+        log.warning("")
+        log.warning("  To move (run in PowerShell as Administrator):")
+        log.warning("    xcopy /E /I /H /Y \"{}\" \"C:\\AI_Employee_Project\"".format(ROOT))
+        log.warning("    cd C:\\AI_Employee_Project")
+        log.warning("    uv run watchers/main.py")
+        log.warning("")
+        log.warning("  Continuing with OneDrive path — expect intermittent errors.")
+        log.warning("=" * 60)
+    else:
+        log.info(f"Path check OK — not inside OneDrive: {ROOT}")
+
+
+# =============================================================================
+# 2. WRITE PERMISSION CHECK
+# =============================================================================
+
+def _check_vault_permissions() -> None:
+    """Verify the vault directory is writable. Warn if not — do not crash.
+
+    Checks the key directories that watchers write to.
+    If a directory is not writable, logs a clear error and suggests the fix.
+    """
+    vault = ROOT / "vault" / "AI_Employee_Vault"
+    dirs_to_check = [
+        vault / "Inbox" / "email",
+        vault / "Inbox" / "whatsapp",
+        vault / "Needs_Action" / "email",
+        vault / "Needs_Action" / "whatsapp",
+        vault / "Approved" / "linkedin",
+        vault / "Done" / "linkedin",
+        vault / "Logs",
+    ]
+
+    any_failed = False
+    for dir_path in dirs_to_check:
+        try:
+            dir_path.mkdir(parents=True, exist_ok=True)
+            test_file = dir_path / ".write_test"
+            test_file.touch()
+            test_file.unlink()
+        except OSError as e:
+            log.error(f"[WRITE-CHECK] NOT writable: {dir_path}")
+            log.error(f"[WRITE-CHECK] Error: {e}")
+            any_failed = True
+
+    if any_failed:
+        log.error("=" * 60)
+        log.error("  WRITE PERMISSION FAILURE DETECTED")
+        log.error("  Some vault directories are not writable.")
+        log.error("  If running from OneDrive, move to: C:\\AI_Employee_Project")
+        log.error("  System will attempt to continue — expect failures.")
+        log.error("=" * 60)
+    else:
+        log.info("Write permission check passed — all vault directories writable.")
+
+
+# =============================================================================
+# 3. SINGLE INSTANCE LOCK
 # =============================================================================
 
 def _acquire_instance_lock() -> None:
-    """Prevent two copies of the system from running simultaneously.
-
-    Writes this process's PID to .ai_employee.pid.
-    If a PID file already exists and that process is still alive → exit.
-    If the process is dead (stale lock) → overwrite and continue.
-    """
+    """Prevent two copies of the system from running simultaneously."""
     if LOCK_FILE.exists():
         try:
             old_pid = int(LOCK_FILE.read_text().strip())
@@ -59,13 +151,10 @@ def _acquire_instance_lock() -> None:
             old_pid = None
 
         if old_pid:
-            # Use psutil for cross-platform process existence check.
-            # os.kill(pid, 0) is Unix-only and raises WinError 87 on Windows.
             try:
                 import psutil
                 alive = psutil.pid_exists(old_pid)
             except ImportError:
-                # psutil not available — fall back to OpenProcess on Windows
                 alive = False
                 if sys.platform == "win32":
                     import ctypes
@@ -88,7 +177,6 @@ def _acquire_instance_lock() -> None:
 
 
 def _release_instance_lock() -> None:
-    """Remove the PID lock file on exit."""
     try:
         if LOCK_FILE.exists():
             LOCK_FILE.unlink()
@@ -98,26 +186,19 @@ def _release_instance_lock() -> None:
 
 
 # =============================================================================
-# 2. PORT CLEANUP
+# 4. PORT CLEANUP
 # =============================================================================
 
 def _port_in_use(port: int) -> bool:
-    """Return True if something is already bound to the port."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.settimeout(1)
         return s.connect_ex(("127.0.0.1", port)) == 0
 
 
 def _free_port(port: int) -> None:
-    """Kill ALL processes holding the given port.
-
-    Uses psutil (kills every PID on the port, not just the first one).
-    Falls back to netstat + taskkill on Windows if psutil is unavailable.
-    """
     log.warning(f"Port {port} is in use — attempting to free it...")
     try:
         import psutil
-        # Collect all unique PIDs bound to this port first, then kill them all.
         pids_to_kill: set[int] = set()
         for conn in psutil.net_connections(kind="inet"):
             if conn.laddr.port == port and conn.pid:
@@ -139,9 +220,8 @@ def _free_port(port: int) -> None:
                     pass
         return
     except ImportError:
-        pass  # psutil not installed — fall back
+        pass
 
-    # Windows fallback: netstat + taskkill
     if sys.platform == "win32":
         try:
             out = subprocess.check_output(
@@ -164,20 +244,15 @@ def _free_port(port: int) -> None:
 
 
 def _ensure_port_free(port: int) -> None:
-    """Check port; if busy, free it and wait up to 5 s for it to release."""
     if not _port_in_use(port):
         log.info(f"Port {port} is free.")
         return
 
     _free_port(port)
 
-    # Wait up to 15 s — Windows ports can linger in TIME_WAIT state after kill
-    for _ in range(30):          # 30 × 0.5 s = 15 s max
+    for _ in range(30):
         time.sleep(0.5)
         if not _port_in_use(port):
-            # Extra 2 s buffer: Windows has a brief window where the port tests
-            # as free but the OS socket hasn't been fully torn down yet.
-            # Attempting to bind immediately can still get WSAEADDRINUSE.
             time.sleep(2)
             log.info(f"Port {port} is now free.")
             return
@@ -186,16 +261,10 @@ def _ensure_port_free(port: int) -> None:
 
 
 # =============================================================================
-# 3. WHATSAPP SESSION CLEANUP
+# 5. WHATSAPP SESSION CLEANUP
 # =============================================================================
 
 def _clear_whatsapp_lock() -> None:
-    """Delete stale Chrome SingletonLock before starting WhatsApp client.
-
-    A previous crash leaves this file behind, causing:
-        'The browser is already running for .wwebjs_auth/session'
-    Removing it lets the new Chrome process start cleanly.
-    """
     if WHATSAPP_LOCK.exists():
         try:
             WHATSAPP_LOCK.unlink()
@@ -207,11 +276,10 @@ def _clear_whatsapp_lock() -> None:
 
 
 # =============================================================================
-# 4. PROCESS MANAGEMENT
+# 6. PROCESS MANAGEMENT
 # =============================================================================
 
 def _spawn(cmd: list[str]) -> subprocess.Popen:
-    """Start a child process and register it for shutdown."""
     proc = subprocess.Popen(cmd, cwd=str(ROOT))
     _processes.append(proc)
     log.info(f"Started: {' '.join(cmd)}")
@@ -219,10 +287,6 @@ def _spawn(cmd: list[str]) -> subprocess.Popen:
 
 
 def _shutdown(signum=None, frame=None) -> None:
-    """Gracefully stop all child processes and release the instance lock.
-
-    Called on Ctrl+C (SIGINT), SIGTERM, or normal exit via atexit.
-    """
     log.info("Shutting down AI Employee System...")
 
     for proc in _processes:
@@ -247,7 +311,7 @@ def _shutdown(signum=None, frame=None) -> None:
 
 
 # =============================================================================
-# 5. STARTUP SEQUENCE
+# 7. STARTUP SEQUENCE
 # =============================================================================
 
 def _startup_checks() -> None:
@@ -257,6 +321,8 @@ def _startup_checks() -> None:
     log.info("=" * 55)
 
     _acquire_instance_lock()
+    _check_onedrive()          # Warn if inside OneDrive
+    _check_vault_permissions() # Warn if vault dirs not writable
     _ensure_port_free(MCP_PORT)
     _clear_whatsapp_lock()
 
@@ -266,24 +332,18 @@ def _startup_checks() -> None:
 def _launch_all() -> None:
     """Spawn every component in the correct order."""
 
-    # MCP email server must bind port 8001 before any watcher calls it
     _spawn(["uv", "run", "mcp_server.py"])
     log.info(f"Waiting 6 s for MCP server to bind port {MCP_PORT}...")
     time.sleep(6)
 
-    # Gmail pipeline
     _spawn(["uv", "run", "watchers/gmail_watcher.py"])
     _spawn(["uv", "run", "watchers/run_watcher.py"])
     _spawn(["uv", "run", "watchers/task_processor.py"])
 
-    # WhatsApp pipeline
     _spawn(["uv", "run", "watchers/whatsapp_watcher.py"])
     _spawn(["uv", "run", "watchers/whatsapp_inbox_watcher.py"])
 
-    # LinkedIn auto-publisher
     _spawn(["uv", "run", "watchers/approved_watcher.py"])
-
-    # Scheduler (daily LinkedIn post + Monday CEO briefing)
     _spawn(["uv", "run", "watchers/scheduler.py"])
 
     log.info("=" * 55)
@@ -292,14 +352,7 @@ def _launch_all() -> None:
 
 
 def _watch_loop() -> None:
-    """Keep the main process alive and auto-restart any crashed child.
-
-    Restart delay prevents instant crash-loops:
-    - whatsapp_watcher handles its own internal retries (12 s delay, 5 max)
-      so when it exits here it has already exhausted its own retry budget;
-      give it 30 s before the outer loop tries again.
-    - All other processes get a 10 s cooldown.
-    """
+    """Keep main process alive and auto-restart any crashed child."""
     RESTART_DELAYS = {
         "whatsapp_watcher": 30,
     }
@@ -322,8 +375,6 @@ def _watch_loop() -> None:
                 )
                 time.sleep(delay)
 
-                # For the MCP server, ensure the port is free before restarting.
-                # The previous instance may still hold the socket in TIME_WAIT.
                 if "mcp_server" in cmd_str:
                     _ensure_port_free(MCP_PORT)
 
@@ -333,15 +384,12 @@ def _watch_loop() -> None:
 
 
 # =============================================================================
-# 6. ENTRY POINT
+# 8. ENTRY POINT
 # =============================================================================
 
 if __name__ == "__main__":
-    # Register signal handlers for clean shutdown on Ctrl+C or system stop
     signal.signal(signal.SIGINT,  _shutdown)
     signal.signal(signal.SIGTERM, _shutdown)
-
-    # atexit covers the edge case where Python exits without a signal
     atexit.register(_release_instance_lock)
 
     _startup_checks()

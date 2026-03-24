@@ -13,6 +13,7 @@ import socket
 from datetime import datetime
 from pathlib import Path
 from time import sleep
+import sys
 
 # FIX: Load .env before any other import that may need env vars
 from dotenv import load_dotenv

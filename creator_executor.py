@@ -25,8 +25,9 @@ from pathlib import Path
 
 # Load .env file so API keys persist across sessions
 from dotenv import load_dotenv
-from filelock import FileLock
 load_dotenv(Path(__file__).parent / ".env")
+
+from vault_utils import append_log, append_dashboard
 
 # ── AI provider imports (try both, use whichever is available) ────────────────
 
@@ -184,19 +185,10 @@ def _read_daily_count() -> int:
     return text.count("[LINKEDIN POST CREATED]")
 
 def _append_dashboard(block: str):
-    DASHBOARD.parent.mkdir(parents=True, exist_ok=True)
-    lock_path = str(DASHBOARD.resolve()) + ".lock"
-    with FileLock(lock_path, timeout=10):
-        with open(DASHBOARD, "a", encoding="utf-8") as f:
-            f.write("\n" + block + "\n")
+    append_dashboard(DASHBOARD, block)
 
 def _append_log(block: str):
-    LOGS.mkdir(parents=True, exist_ok=True)
-    log_file = LOGS / f"log_{_today()}.md"
-    lock_path = str(log_file.resolve()) + ".lock"
-    with FileLock(lock_path, timeout=10):
-        with open(log_file, "a", encoding="utf-8") as f:
-            f.write("\n" + block + "\n")
+    append_log(LOGS, block)
 
 # ── Content generation ────────────────────────────────────────────────────────
 

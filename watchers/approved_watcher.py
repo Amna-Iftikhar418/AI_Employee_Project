@@ -1,55 +1,125 @@
 """
 approved_watcher.py
-Monitors vault/AI_Employee_Vault/Approved/ for LINKEDIN_POST_*.md files
-and automatically triggers linkedin_executor.run_linkedin_post().
+Monitors vault/AI_Employee_Vault/Approved/ for task files and executes them.
+
+For LinkedIn posts:
+- Detects LINKEDIN_POST_*.md files in Approved/linkedin/
+- Calls linkedin_executor.run_linkedin_post() directly (Python)
+- Auto-publishes, updates logs, moves to Done/
+
+For email tasks:
+- Calls send_email_executor.py directly (Python, no Claude spawn)
+
+For WhatsApp / general tasks:
+- Calls process_approved_executor.py directly (Python, no Claude spawn)
 
 Run with:
     uv run watchers/approved_watcher.py
     (or: python watchers/approved_watcher.py)
 """
 
-import json
-import os
+import subprocess
 import sys
 import time
 from pathlib import Path
 
-# Add project root to sys.path so linkedin_executor can be imported
+RETRY_COOLDOWN = 600  # seconds before re-attempting a failed file (10 min)
+
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from linkedin_executor import run_linkedin_post  # noqa: E402
+from vault_utils import load_processed, save_processed
 
-APPROVED        = ROOT / "vault" / "AI_Employee_Vault" / "Approved" / "linkedin"
-PROCESSED_FILE  = APPROVED / ".processed_approved.json"
+# Import LinkedIn executor directly (no Claude spawn)
+try:
+    from linkedin_executor import run_linkedin_post
+    LINKEDIN_EXECUTOR_AVAILABLE = True
+except ImportError as e:
+    print(f"[WARN] linkedin_executor not available: {e}")
+    LINKEDIN_EXECUTOR_AVAILABLE = False
+
+
+SEND_EMAIL_EXECUTOR     = ROOT / ".claude" / "commands" / "send_email_executor.py"
+PROCESS_APPROVED_EXECUTOR = ROOT / ".claude" / "commands" / "process_approved_executor.py"
+
+
+def run_send_email_executor(file_path: Path) -> None:
+    """Send an approved email via send_email_executor.py (no Claude spawn)."""
+    print(f"[AUTO] Sending email for: {file_path.name}")
+    try:
+        result = subprocess.run(
+            [sys.executable, str(SEND_EMAIL_EXECUTOR), str(file_path)],
+            cwd=str(ROOT),
+            timeout=60,
+        )
+        if result.returncode != 0:
+            print(f"[WARN] send_email_executor exited with code {result.returncode}.")
+    except Exception as e:
+        print(f"[ERROR] send_email_executor failed: {e}")
+
+
+def run_process_approved_executor(file_path: Path) -> None:
+    """Process an approved WhatsApp/general task via process_approved_executor.py (no Claude spawn)."""
+    print(f"[AUTO] Processing approved task for: {file_path.name}")
+    try:
+        result = subprocess.run(
+            [sys.executable, str(PROCESS_APPROVED_EXECUTOR), str(file_path)],
+            cwd=str(ROOT),
+            timeout=60,
+        )
+        if result.returncode != 0:
+            print(f"[WARN] process_approved_executor exited with code {result.returncode}.")
+    except Exception as e:
+        print(f"[ERROR] process_approved_executor failed: {e}")
+
+
+def run_linkedin_file(file_path: Path) -> None:
+    """
+    Process a LinkedIn post file.
+    Uses direct Python executor (linkedin_executor.py) - no Claude spawn.
+    """
+    print(f"[WATCHER] LinkedIn file detected: {file_path.name}")
+
+    if not LINKEDIN_EXECUTOR_AVAILABLE:
+        print(f"[ERROR] linkedin_executor not available - cannot process {file_path.name}")
+        return
+
+    # Validate file is in correct location
+    if "Approved" not in str(file_path) or "linkedin" not in str(file_path).lower():
+        print(f"[ERROR] LinkedIn file not in Approved/linkedin/: {file_path}")
+        return
+
+    # Call the executor directly (Python function, no subprocess)
+    try:
+        result = run_linkedin_post(file_path)
+        if result:
+            print("[WATCHER] SUCCESS")
+        else:
+            print("[WATCHER] FAILED")
+    except Exception as e:
+        print(f"[ERROR] LinkedIn executor failed: {e}")
+        # File stays in Approved/ for retry
+
+
+# ── Paths ─────────────────────────────────────────────────────────────────────
+
+APPROVED_ROOT   = ROOT / "vault" / "AI_Employee_Vault" / "Approved"
+APPROVED_LINKEDIN = APPROVED_ROOT / "linkedin"
+PROCESSED_FILE  = APPROVED_LINKEDIN / ".processed_approved.json"
 CHECK_INTERVAL  = 5  # seconds between scans
 
 
 # ── Processed-set helpers ─────────────────────────────────────────────────────
 
 def _load_processed() -> set:
-    """Load filenames already handled in a previous watcher run."""
-    if PROCESSED_FILE.exists():
-        try:
-            with open(PROCESSED_FILE, "r", encoding="utf-8") as f:
-                return set(json.load(f).get("processed", []))
-        except Exception:
-            pass
-    return set()
+    return load_processed(PROCESSED_FILE)
 
 
 def _save_processed(processed: set):
-    """Atomically persist the processed-filenames set."""
-    try:
-        tmp = PROCESSED_FILE.with_suffix(".tmp")
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump({"processed": sorted(processed)}, f, indent=2)
-        os.replace(str(tmp), str(PROCESSED_FILE))
-    except Exception as e:
-        print(f"[ERROR] Could not save processed set: {e}")
+    save_processed(PROCESSED_FILE, processed)
 
 
-# ── Frontmatter quick-check ───────────────────────────────────────────────────
+# ── Frontmatter quick-check ─────────────────────────────────────────────────────
 
 def _is_completed(file_path: Path) -> bool:
     """Return True if the file's frontmatter already says status: completed."""
@@ -68,63 +138,136 @@ def _is_completed(file_path: Path) -> bool:
     return False
 
 
+def _get_file_type(file_path: Path) -> str:
+    """Detect file type from filename or frontmatter."""
+    name = file_path.name.lower()
+
+    # LinkedIn posts
+    if name.startswith("linkedin_post_"):
+        return "linkedin"
+
+    # Email tasks
+    if name.startswith("task_email_") or "email" in name:
+        return "email"
+
+    # WhatsApp tasks
+    if name.startswith("task_whatsapp_") or "whatsapp" in name:
+        return "whatsapp"
+
+    # Check frontmatter
+    try:
+        text = file_path.read_text(encoding="utf-8")
+        if text.startswith("---"):
+            end = text.find("---", 3)
+            if end != -1:
+                frontmatter = text[3:end].lower()
+                if "type: linkedin_post" in frontmatter:
+                    return "linkedin"
+                if "type: email_task" in frontmatter:
+                    return "email"
+                if "type: whatsapp_task" in frontmatter:
+                    return "whatsapp"
+    except Exception:
+        pass
+
+    return "unknown"
+
+
 # ── Watcher loop ──────────────────────────────────────────────────────────────
 
 def watch():
     print("[AUTO] -------------------------------------------")
-    print("[AUTO]  LinkedIn Approved Watcher - started")
-    print(f"[AUTO]  Watching : {APPROVED}")
+    print("[AUTO]  Approved Watcher - started")
+    print(f"[AUTO]  Watching : {APPROVED_ROOT}")
+    print(f"[AUTO]  LinkedIn : {APPROVED_LINKEDIN}")
     print(f"[AUTO]  Interval : {CHECK_INTERVAL}s")
     print("[AUTO] -------------------------------------------")
 
-    APPROVED.mkdir(parents=True, exist_ok=True)
+    # Ensure directories exist
+    APPROVED_ROOT.mkdir(parents=True, exist_ok=True)
+    APPROVED_LINKEDIN.mkdir(parents=True, exist_ok=True)
 
     # Files successfully processed in previous runs (persisted to disk)
     persisted = _load_processed()
 
-    # Files attempted in THIS run (not saved — allows retry on restart)
-    attempted_this_run: set = set()
+    # Files attempted in THIS run: name -> timestamp of last attempt
+    # After RETRY_COOLDOWN seconds, a failed file is re-attempted automatically
+    attempted_this_run: dict = {}
 
     while True:
         try:
-            # Glob in filename order (oldest timestamp first)
-            for file_path in sorted(APPROVED.glob("LINKEDIN_POST_*.md")):
+            # Scan all subdirectories in Approved/
+            all_files = []
 
+            # LinkedIn files (highest priority - direct Python execution)
+            if APPROVED_LINKEDIN.exists():
+                all_files.extend(sorted(APPROVED_LINKEDIN.glob("LINKEDIN_POST_*.md")))
+
+            # Other approved tasks (Claude skill execution)
+            for subdir in APPROVED_ROOT.iterdir():
+                if subdir.is_dir() and subdir.name != "linkedin":
+                    all_files.extend(sorted(subdir.glob("TASK_*.md")))
+
+            # Process files in order
+            for file_path in all_files:
                 name = file_path.name
+                full_path = str(file_path)
+
+                print(f"[WATCHER] Detected file: {file_path}")
 
                 # Skip if successfully processed in a previous run
                 if name in persisted:
+                    print(f"[SKIP] Already processed: {name}")
                     continue
 
-                # Skip if we already attempted it this session
+                # Skip if we already attempted it recently (cooldown not expired)
                 if name in attempted_this_run:
-                    continue
+                    elapsed = time.time() - attempted_this_run[name]
+                    if elapsed < RETRY_COOLDOWN:
+                        continue
+                    print(f"[RETRY] Cooldown expired ({elapsed:.0f}s) — retrying: {name}")
 
                 # Skip files that are already marked completed
                 if _is_completed(file_path):
-                    print(f"[SKIP]  Already completed: {name}")
+                    print(f"[SKIP] Already completed: {name}")
                     persisted.add(name)
                     _save_processed(persisted)
                     continue
 
                 print(f"\n[AUTO] -- New file ------------------------------")
-                attempted_this_run.add(name)   # mark before calling (avoid double-trigger)
+                attempted_this_run[name] = time.time()
+
+                # Determine file type and route accordingly
+                file_type = _get_file_type(file_path)
+                print(f"[WATCHER] File type detected: {file_type}")
 
                 try:
-                    run_linkedin_post(file_path)
+                    if file_type == "linkedin":
+                        # LinkedIn: Use direct Python executor (no Claude spawn)
+                        run_linkedin_file(file_path)
+                    elif file_type == "email":
+                        # Email: Use direct Python executor (no Claude spawn)
+                        run_send_email_executor(file_path)
+                    elif file_type == "whatsapp":
+                        # WhatsApp: Use direct Python executor (no Claude spawn)
+                        run_process_approved_executor(file_path)
+                    else:
+                        # Unknown: Use direct Python executor (no Claude spawn)
+                        print(f"[WARN] Unknown file type, trying process_approved_executor: {name}")
+                        run_process_approved_executor(file_path)
+
                 except Exception as e:
                     print(f"[ERROR] Unhandled exception for {name}: {e}")
-                    # File left in Approved/ — retry on next watcher restart
                     continue
 
                 # If the file is now gone (moved to Done/) → mark as fully done
                 if not file_path.exists():
                     persisted.add(name)
                     _save_processed(persisted)
-                    print(f"[AUTO]  Marked as processed: {name}")
+                    print(f"[AUTO] Marked as processed: {name}")
                 else:
-                    # File still in Approved/ → posting failed, leave for retry
-                    print(f"[AUTO]  File remains in Approved/ - will retry on restart.")
+                    # File still in Approved/ → processing failed, leave for retry
+                    print(f"[AUTO] File remains in Approved/ - will retry on restart: {name}")
 
         except Exception as e:
             print(f"[ERROR] Watcher loop error: {e}")

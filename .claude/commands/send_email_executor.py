@@ -34,6 +34,9 @@ import requests
 from dotenv import load_dotenv
 from filelock import FileLock
 
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from vault_utils import parse_frontmatter
+
 # ── Environment ──────────────────────────────────────────────────────────────
 load_dotenv()
 
@@ -56,30 +59,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("send_email_executor")
 
-
-# ── Frontmatter parser ────────────────────────────────────────────────────────
-
-def parse_frontmatter(text: str) -> tuple[dict, str]:
-    """Extract YAML-style frontmatter from markdown content.
-
-    Returns (fields_dict, body_text).
-    Handles simple key: value pairs — no nested YAML needed.
-    Finds the first --- ... --- block anywhere in the file (not just at position 0),
-    so it works when a # Plan: header precedes the frontmatter block.
-    """
-    fields = {}
-    body = text
-
-    match = re.search(r"---\s*\n(.*?)\n---\s*\n(.*)", text, re.DOTALL)
-    if match:
-        fm_block = match.group(1)
-        body = match.group(2)
-        for line in fm_block.splitlines():
-            if ":" in line:
-                key, _, value = line.partition(":")
-                fields[key.strip()] = value.strip()
-
-    return fields, body
 
 
 def extract_section(markdown: str, section_header: str) -> str:
@@ -133,19 +112,18 @@ def load_plan(task_name: str) -> dict:
     # Recipient — from plan frontmatter "from:" field (the original sender we reply to)
     recipient = meta.get("from", "")
 
-    # Subject — prepend Re: if not already there
     original_subject = meta.get("subject", "")
-    reply_subject = (
-        original_subject
-        if original_subject.lower().startswith("re:")
-        else f"Re: {original_subject}"
-    )
+    reply_subject = original_subject
 
     # Body — from the "## Proposed Response" section
     proposed_body = extract_section(body, "Proposed Response")
     if not proposed_body:
         # Fallback: try "Proposed Reply" or "Response" headings
         proposed_body = extract_section(body, "Proposed Reply") or extract_section(body, "Response")
+
+    if proposed_body:
+        # Strip any leading "Subject: ..." line — subject is sent separately, not in the body
+        proposed_body = re.sub(r"^Subject:[^\n]*\n+", "", proposed_body, flags=re.IGNORECASE).strip()
 
     if not proposed_body:
         raise ValueError(

@@ -1,3 +1,8 @@
+---
+name: whatsapp_handler
+description: Process WhatsApp messages from Inbox into TASK files, generate Plans, and route to Pending_Approval for human review before sending any reply.
+---
+
 # Skill: WhatsApp Task Handler
 
 ## Purpose

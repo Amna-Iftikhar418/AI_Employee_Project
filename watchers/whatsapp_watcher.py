@@ -9,6 +9,7 @@ Architecture:
 """
 
 import atexit
+import io
 import json
 import logging
 import logging.handlers
@@ -45,7 +46,9 @@ _file_handler = logging.handlers.RotatingFileHandler(
     maxBytes=5 * 1024 * 1024,
     backupCount=3,
 )
-_stream_handler = logging.StreamHandler()
+_stream_handler = logging.StreamHandler(
+    stream=io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace", line_buffering=True)
+)
 _fmt = logging.Formatter("%(asctime)s [%(levelname)s] WhatsAppWatcher — %(message)s")
 _file_handler.setFormatter(_fmt)
 _stream_handler.setFormatter(_fmt)
@@ -377,6 +380,8 @@ class WhatsAppWatcher:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="ignore",   # drop undecodable bytes instead of crashing
             bufsize=1,
             cwd=str(PROJECT_ROOT),
         )
@@ -392,7 +397,13 @@ class WhatsAppWatcher:
                 line = line.strip()
                 if not line:
                     continue
-                logger.info(f"[JS] {line}")
+                # QR code lines contain Unicode block chars — print raw so they
+                # render correctly without log-prefix noise breaking alignment.
+                qr_chars = ('█', '▄', '▀', '▌', '▐', '░', '▒', '▓')
+                if any(line.startswith(c) for c in qr_chars):
+                    print(line, flush=True)
+                else:
+                    logger.info(f"[JS] {line}")
                 stderr_lines.append(line)
                 # Detect specific crash reasons from Puppeteer output
                 low = line.lower()
@@ -413,19 +424,27 @@ class WhatsAppWatcher:
                 raw_line = raw_line.strip()
                 if not raw_line:
                     continue
+
+                # Only attempt JSON parse on lines that look like objects.
+                # All other stdout (QR code, logs, warnings) is silently ignored —
+                # the JS client now routes those to stderr instead.
+                if not raw_line.startswith("{"):
+                    logger.debug(f"[JS stdout] {raw_line[:200]}")
+                    continue
+
                 try:
                     msg = json.loads(raw_line)
 
                     # Validate schema — reject unexpected or malformed payloads
                     if not isinstance(msg, dict):
-                        logger.error(f"Expected JSON object from JS client, got: {type(msg).__name__}")
+                        logger.warning(f"Expected JSON object from JS client, got: {type(msg).__name__}")
                         continue
                     sender     = msg.get("sender", "")
                     text       = msg.get("text", "")
                     message_id = msg.get("message_id", "")
 
                     if not isinstance(sender, str) or not isinstance(text, str):
-                        logger.error(f"Invalid field types in JS message — sender:{type(sender).__name__} text:{type(text).__name__}")
+                        logger.warning(f"Invalid field types in JS message — sender:{type(sender).__name__} text:{type(text).__name__}")
                         continue
 
                     # Enforce reasonable field lengths to prevent log/file bloat
@@ -436,7 +455,7 @@ class WhatsAppWatcher:
                     if text:
                         self._create_inbox_file(sender, text, message_id)
                 except json.JSONDecodeError:
-                    logger.error(f"Malformed JSON from JS client: {raw_line[:200]!r}")
+                    logger.debug(f"Non-JSON from JS stdout: {raw_line[:200]!r}")
 
         except KeyboardInterrupt:
             logger.info("KeyboardInterrupt received — stopping.")

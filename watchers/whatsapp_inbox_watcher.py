@@ -5,20 +5,17 @@ Zero overlap with email logic — filesystem_watcher.py is NOT modified.
 Updates Log and Dashboard at each step.
 """
 
-import json
 import logging
 import logging.handlers
-import os
 import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
 
-# FIX: filelock prevents race conditions on the processed-set JSON
-from filelock import FileLock
-
 sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 from base_watcher import BaseWatcher
+from vault_utils import append_log, append_dashboard, load_processed, save_processed
 
 PROCESSED_FILE_NAME = ".processed_whatsapp_inbox.json"
 
@@ -55,9 +52,6 @@ class WhatsAppInboxWatcher(BaseWatcher):
         if _old.exists() and not self._processed_file.exists():
             shutil.move(str(_old), str(self._processed_file))
 
-        # FIX: One lock file per JSON — prevents concurrent corruption
-        self._lock = FileLock(str(self._processed_file) + ".lock")
-
         self.archive.mkdir(parents=True, exist_ok=True)
         self.needs_action.mkdir(parents=True, exist_ok=True)
         self.logs_dir.mkdir(parents=True, exist_ok=True)
@@ -88,62 +82,26 @@ class WhatsAppInboxWatcher(BaseWatcher):
     # ------------------------------------------------------------------
 
     def _load_processed(self) -> set:
-        # FIX: Acquire lock before reading to prevent torn reads
-        with self._lock:
-            if self._processed_file.exists():
-                try:
-                    data = json.loads(self._processed_file.read_text(encoding="utf-8"))
-                    return set(data.get("processed", []))
-                except Exception as e:
-                    # FIX: Log full exception — not silent drop
-                    self.logger.exception(
-                        f"Failed to load processed set (starting fresh): {e}"
-                    )
-        return set()
+        return load_processed(self._processed_file)
 
     def _save_processed(self, filename: str):
-        """Atomically persist processed filename.
-
-        FIX: write-to-temp + os.replace() under file lock — crash-safe.
-        """
         self._processed.add(filename)
-        with self._lock:
-            try:
-                tmp = self._processed_file.with_suffix(".tmp")
-                tmp.write_text(
-                    json.dumps({"processed": list(self._processed)}, indent=2),
-                    encoding="utf-8",
-                )
-                os.replace(str(tmp), str(self._processed_file))
-            except Exception as e:
-                self.logger.exception(f"Failed to save processed set: {e}")
+        save_processed(self._processed_file, self._processed)
 
     # ------------------------------------------------------------------
     # Log + Dashboard helpers
     # ------------------------------------------------------------------
 
     def _write_log(self, filename: str, sender: str):
-        today = datetime.now().strftime("%Y-%m-%d")
         timestamp = datetime.now().strftime("%H:%M:%S")
-        log_path = self.logs_dir / f"log_{today}.md"
-        entry = (
-            f"\n[{timestamp}] RECEIVED: {filename} - "
-            f"WhatsApp message from {sender}, task created"
+        append_log(
+            self.logs_dir,
+            f"[{timestamp}] RECEIVED: {filename} - WhatsApp message from {sender}, task created",
         )
-        try:
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(entry)
-        except Exception as e:
-            self.logger.exception(f"Failed to write log: {e}")
 
     def _update_dashboard(self, filename: str):
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        entry = f"\n- [Received] {filename} - {timestamp}"
-        try:
-            with open(self.dashboard_file, "a", encoding="utf-8") as f:
-                f.write(entry)
-        except Exception as e:
-            self.logger.exception(f"Failed to update dashboard: {e}")
+        append_dashboard(self.dashboard_file, f"- [Received] {filename} - {timestamp}")
 
     # ------------------------------------------------------------------
     # File parser

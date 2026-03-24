@@ -1,13 +1,10 @@
-import os
-import json
 import shutil
+import sys
 from pathlib import Path
 from datetime import datetime
 
-# FIX: filelock prevents race conditions when multiple processes read/write
-# the processed-set JSON at the same time
-from filelock import FileLock
-
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from vault_utils import load_processed, save_processed
 from base_watcher import BaseWatcher
 
 
@@ -25,68 +22,64 @@ class FileSystemWatcher(BaseWatcher):
         if _old.exists() and not self._processed_file.exists():
             shutil.move(str(_old), str(self._processed_file))
 
-        # FIX: One lock file per JSON — prevents concurrent corruption
-        self._lock = FileLock(str(self._processed_file) + ".lock")
-
-        # FIX: Fail fast on startup if directories are not writable
+        # Warn (do not crash) if directories are not writable
         self._check_write_permissions()
 
         self.processed = self._load_processed()
 
     # ------------------------------------------------------------------
-    # Startup check
+    # Startup check — warns but does NOT crash
     # ------------------------------------------------------------------
 
     def _check_write_permissions(self):
-        """Verify all required directories are writable before starting."""
-        for path in [self.inbox, self.archive, self.needs_action / "email"]:
-            path.mkdir(parents=True, exist_ok=True)
-            test_file = path / ".write_test"
+        """Verify required directories are writable. Log warnings, do not crash.
+
+        OneDrive-synced paths often fail this check with PermissionError.
+        If that happens, a clear advisory is printed but the watcher continues.
+        Moving the project to C:\\AI_Employee_Project resolves these errors.
+        """
+        dirs_to_check = [
+            self.inbox,
+            self.archive,
+            self.needs_action / "email",
+        ]
+
+        vault_str = str(self.vault_path).lower()
+        in_onedrive = "onedrive" in vault_str or "skydrive" in vault_str
+
+        for path in dirs_to_check:
             try:
+                path.mkdir(parents=True, exist_ok=True)
+                test_file = path / ".write_test"
                 test_file.touch()
                 test_file.unlink()
             except OSError as e:
-                raise RuntimeError(
-                    f"No write permission on directory: {path}\n"
-                    f"Error: {e}\n"
-                    "Fix directory permissions before starting the watcher."
-                ) from e
+                self.logger.warning(
+                    f"[WRITE-CHECK] Directory not writable: {path}\n"
+                    f"              Error: {e}"
+                )
+                if in_onedrive:
+                    self.logger.warning(
+                        "[WRITE-CHECK] OneDrive detected — this is likely causing the "
+                        "permission error. Fix: move project to C:\\AI_Employee_Project"
+                    )
+                else:
+                    self.logger.warning(
+                        "[WRITE-CHECK] Fix: ensure the directory exists and is not "
+                        "read-only. Run as Administrator if needed."
+                    )
+                # Do NOT raise — watcher continues and will fail gracefully per-operation
 
     # ------------------------------------------------------------------
     # Processed-set persistence (locked + atomic)
     # ------------------------------------------------------------------
 
     def _load_processed(self) -> set:
-        """Load persisted set of processed inbox filenames from disk."""
-        # FIX: Acquire lock before reading — prevents torn reads
-        with self._lock:
-            if self._processed_file.exists():
-                try:
-                    with open(self._processed_file, "r") as f:
-                        data = json.load(f)
-                        return set(data.get("processed", []))
-                except (json.JSONDecodeError, IOError) as e:
-                    self.logger.error(f"Error loading processed set (starting fresh): {e}")
-        return set()
+        return load_processed(self._processed_file)
 
     def _save_processed(self, filename: str):
-        """Atomically persist a newly processed inbox filename to disk.
-
-        FIX: Uses write-to-temp + os.replace() so a crash mid-write never
-        leaves a half-written or empty JSON file.
-        """
         self.processed.add(filename)
-        with self._lock:
-            try:
-                data = {"processed": list(self.processed)}
-                # Write to .tmp first, then atomically replace the real file
-                tmp = self._processed_file.with_suffix(".tmp")
-                with open(tmp, "w") as f:
-                    json.dump(data, f, indent=2)
-                # os.replace is atomic on POSIX; on Windows it's best-effort
-                os.replace(str(tmp), str(self._processed_file))
-            except IOError as e:
-                self.logger.error(f"Failed to save processed set: {e}")
+        save_processed(self._processed_file, self.processed)
 
     # ------------------------------------------------------------------
     # Watcher interface
@@ -96,16 +89,10 @@ class FileSystemWatcher(BaseWatcher):
         new_files = []
 
         for file in self.inbox.glob("*"):
-            # Skip directories (e.g. Archive/)
             if file.is_dir():
                 continue
-
-            # Skip hidden tracking files
             if file.name.startswith("."):
                 continue
-
-            # Already processed — original file stays in Inbox until approved/rejected.
-            # Skip silently; _cleanup_inbox_file() in task_processor handles archiving.
             if file.name in self.processed:
                 continue
 
@@ -193,14 +180,11 @@ File name: {file_path.name}
 - [ ] Move to Done
 """
 
-        # Step 1: Create task file in Needs_Action/email/
         email_needs_action = self.needs_action / "email"
         email_needs_action.mkdir(parents=True, exist_ok=True)
         action_file = email_needs_action / f"TASK_{file_path.name}.md"
         action_file.write_text(content, encoding="utf-8")
 
-        # Step 2: Persist to disk so restarts don't re-detect this file
-        # Original file stays in Inbox/email/ until approved/rejected
         self._save_processed(file_path.name)
 
         return action_file

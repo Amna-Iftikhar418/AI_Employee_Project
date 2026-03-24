@@ -4,7 +4,7 @@ scheduler.py
 Time-based task scheduler for the AI Employee system.
 
 Schedules:
-  - Every day at 09:00 → run creator_executor.py (LinkedIn post)
+  - Every day at 09:00 → invoke linkedin_post_creator skill via Claude CLI
   - Every Monday at 08:00 → generate CEO Briefing in vault/Briefings/
 """
 
@@ -29,20 +29,26 @@ logger = logging.getLogger("Scheduler")
 
 
 def run_linkedin_post():
-    """Auto-generate a LinkedIn post (topic auto-selected by creator_executor)."""
-    logger.info("Running daily LinkedIn post generation...")
+    """Auto-generate a LinkedIn post via the linkedin_post_creator skill."""
+    logger.info("Running daily LinkedIn post generation via linkedin_post_creator skill...")
     try:
         result = subprocess.run(
-            ["uv", "run", str(ROOT / "creator_executor.py")],
+            [
+                "claude", "-p",
+                "The daily scheduler has triggered. Run the linkedin_post_creator skill to auto-select a topic and create today's LinkedIn post.",
+                "--allowedTools", "all",
+            ],
             cwd=str(ROOT),
             capture_output=False,
+            timeout=300,
+            shell=True if sys.platform == "win32" else False,
         )
         if result.returncode == 0:
-            logger.info("LinkedIn post generation completed.")
+            logger.info("linkedin_post_creator skill completed.")
         else:
-            logger.warning(f"LinkedIn post generation exited with code {result.returncode}.")
+            logger.warning(f"linkedin_post_creator skill exited with code {result.returncode}.")
     except Exception as e:
-        logger.exception(f"Error running creator_executor.py: {e}")
+        logger.exception(f"Error running linkedin_post_creator skill: {e}")
 
 
 def generate_ceo_briefing():
@@ -138,6 +144,36 @@ schedule.every().monday.at("08:00").do(generate_ceo_briefing)
 logger.info("Started.")
 logger.info("  - LinkedIn post: daily at 09:00")
 logger.info("  - CEO Briefing:  every Monday at 08:00")
+
+# ── Startup catch-up: run missed jobs if not yet done today ──────────────────
+_now = datetime.now()
+_today_str = _now.strftime("%Y%m%d")  # e.g. 20260325 — matches LINKEDIN_POST_ filenames
+
+# LinkedIn post catch-up: if 09:00 has already passed and no post exists for today
+if _now.hour >= 9:
+    _linkedin_dirs = [
+        VAULT / "Pending_Approval" / "linkedin",
+        VAULT / "Approved" / "linkedin",
+        VAULT / "Done" / "linkedin",
+    ]
+    _post_exists_today = any(
+        list(d.glob(f"LINKEDIN_POST_{_today_str}*.md"))
+        for d in _linkedin_dirs
+        if d.exists()
+    )
+    if not _post_exists_today:
+        logger.info("Startup catch-up — 09:00 passed with no LinkedIn post today. Generating now...")
+        run_linkedin_post()
+    else:
+        logger.info("Startup catch-up — LinkedIn post already exists for today. Skipping.")
+
+# CEO Briefing catch-up: Mondays only
+if _now.weekday() == 0:  # 0 = Monday
+    _today = _now.strftime("%Y-%m-%d")
+    _briefing_path = VAULT / "Briefings" / f"{_today}_Monday_Briefing.md"
+    if not _briefing_path.exists():
+        logger.info("Monday detected on startup — running missed CEO Briefing now.")
+        generate_ceo_briefing()
 
 while True:
     try:

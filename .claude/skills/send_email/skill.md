@@ -1,3 +1,8 @@
+---
+name: send_email
+description: Send an approved email reply via the MCP server. Reads the PLAN file for recipient and body, calls MCP on port 8001, updates logs and Dashboard, then moves task to Done.
+---
+
 # Skill: Send Email via MCP
 
 ## Purpose

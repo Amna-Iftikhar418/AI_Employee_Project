@@ -1,3 +1,8 @@
+---
+name: linkedin_publisher
+description: Publish approved LinkedIn posts to LinkedIn via Playwright browser automation. Reads from Approved/linkedin, posts, updates logs and Dashboard, then moves file to Done.
+---
+
 # Skill: LinkedIn Publisher
 
 ## Purpose
@@ -59,7 +64,7 @@ or when the operator requests LinkedIn post publishing.
 ### Step 1 — Scan Approved/ for ALL LinkedIn Post Files
 
 ```
-Glob: vault/AI_Employee_Vault/Approved/LINKEDIN_POST_*.md
+Glob: vault/AI_Employee_Vault/Approved/linkedin/LINKEDIN_POST_*.md
 ```
 
 **If files found:**
@@ -173,8 +178,8 @@ Append (create if not exists):
 - If not found → STOP: "File <filename> not found in Approved/"
 
 **If no argument provided:**
-- Glob: `vault/AI_Employee_Vault/Approved/LINKEDIN_POST_*.md`
-- If none found → STOP: "No LinkedIn post files found in Approved/"
+- Glob: `vault/AI_Employee_Vault/Approved/linkedin/LINKEDIN_POST_*.md`
+- If none found → STOP: "No LinkedIn post files found in Approved/linkedin/"
 - If multiple found → use the OLDEST one (sort by filename timestamp, ascending)
 
 **Read the file and extract:**
@@ -297,7 +302,7 @@ Check for at least ONE success indicator:
 
 ### Step 7 — Update File Metadata
 
-Update frontmatter in `vault/AI_Employee_Vault/Approved/LINKEDIN_POST_<timestamp>.md`:
+Update frontmatter in `vault/AI_Employee_Vault/Approved/linkedin/LINKEDIN_POST_<timestamp>.md`:
 
 ```yaml
 status: completed
@@ -353,9 +358,9 @@ File: `vault/AI_Employee_Vault/Logs/log_<YYYY-MM-DD>.md`
 ### Step 10 — Move File to Done (MANDATORY)
 
 ```
-vault/AI_Employee_Vault/Approved/LINKEDIN_POST_<timestamp>.md
+vault/AI_Employee_Vault/Approved/linkedin/LINKEDIN_POST_<timestamp>.md
 →
-vault/AI_Employee_Vault/Done/LINKEDIN_POST_<timestamp>.md
+vault/AI_Employee_Vault/Done/linkedin/LINKEDIN_POST_<timestamp>.md
 ```
 
 Verify: file is in `Done/` and NOT in `Approved/`.

@@ -47,8 +47,7 @@ appears in `vault/AI_Employee_Vault/Needs_Action/whatsapp/`
 **Skill:** `.claude/skills/linkedin_post_creator/skill.md`
 
 ### 8. linkedin_publisher
-**When to use:** A LINKEDIN_POST_*.md file appears in `vault/AI_Employee_Vault/Approved/linkedin/`
-**Skill:** `.claude/skills/linkedin_publisher/skill.md`
+**When to use:** NEVER — LinkedIn publishing is fully automated via `linkedin_executor.py` + `linkedin_post.js`, triggered by `approved_watcher.py` when a file lands in `Approved/linkedin/`. Do NOT invoke the skill manually.
 
 ---
 
@@ -66,9 +65,20 @@ Gmail/WhatsApp → Inbox/ → Needs_Action/ → [skill creates Plan] → Pending
                                                                       Done/
 ```
 
+## Autonomous Skill Invocation
+
+Skills are invoked in two ways:
+1. **Manually** — You open Claude Code and run the skill yourself (gmail, whatsapp, email tasks)
+2. **Automatically** — Background watchers call `claude -p` to invoke skills headlessly:
+   - `scheduler.py` at 09:00 daily → invokes `linkedin_post_creator` skill
+   - `approved_watcher.py` on file detected → runs `linkedin_executor.py` + `linkedin_post.js` directly (no skill)
+
+The `claude` CLI runs autonomously — no interactive session needed. It must be installed and authenticated once (`claude auth login`).
+
 ## Key Rules
 - NEVER send emails or post to LinkedIn without a file in Approved/
 - ALWAYS create a PLAN file before any action
 - ALWAYS append to logs and Dashboard — never overwrite
 - Vault path: `vault/AI_Employee_Vault/`
 - MCP server runs on: `http://localhost:8001`
+- ALL AI logic lives in `.claude/skills/` — never in Python scripts directly

@@ -1,14 +1,21 @@
 /**
- * linkedin_post.js
- * Node.js Playwright script — called by linkedin_executor.py.
- * Uses a persistent browser profile so the LinkedIn session is reused across runs.
+ * linkedin_post.js  v3
+ * Robust LinkedIn post publisher using Playwright persistent context.
+ *
+ * Fixes applied vs v2:
+ *   1. Delete SingletonLock before launch  → prevents Chrome exit-code 21 crash
+ *   2. URL-based login detection           → works even when DOM classes change
+ *   3. waitForLoadState('networkidle')     → page fully rendered before searches
+ *   4. Semantic selectors (role/aria)      → survive LinkedIn DOM obfuscation
+ *   5. page.getByText / getByRole()        → Playwright built-ins as final fallback
+ *   6. body.click() before keyboard 'c'   → ensures focus before shortcut
+ *   7. Screenshot saved on every failure  → easy debugging
  *
  * Usage:
  *   node linkedin_post.js --content-file <path>
  *
- * Prints a single JSON line to stdout:
+ * Prints one JSON line to stdout:
  *   {"success": true/false, "postUrl": "...", "error": "..."}
- * All diagnostic output goes to stderr.
  */
 
 const { chromium } = require('playwright');
@@ -16,263 +23,39 @@ const path = require('path');
 const fs   = require('fs');
 const os   = require('os');
 
-// Dedicated persistent profile — separate from the MCP Playwright browser.
-// First run: browser opens so user can log in. Every run after: session reused.
-const PROFILE_DIR = path.join(os.homedir(), '.linkedin-executor-profile');
+const PROFILE_DIR = path.join(os.homedir(), '.linkedin-profile');
+const DEBUG_DIR   = path.join(__dirname, 'linkedin_debug');
 
-async function postToLinkedIn(content) {
-    let browser = null;
+function log(msg) { console.error(msg); }
 
-    try {
-        browser = await chromium.launchPersistentContext(PROFILE_DIR, {
-            headless: false,           // headed — needed for LinkedIn session + CAPTCHA
-            args: ['--no-sandbox', '--disable-dev-shm-usage'],
-            timeout: 30000
-        });
-
-        const page = browser.pages()[0] || await browser.newPage();
-
-        // ── Step 1: Navigate ────────────────────────────────────────────────
-        console.error('[Browser] Navigating to LinkedIn feed...');
-        await page.goto('https://www.linkedin.com/feed', {
-            waitUntil: 'domcontentloaded',
-            timeout: 30000
-        });
-        await page.waitForTimeout(2000);
-
-        // ── Step 2: Session check ────────────────────────────────────────────
-        const startPostCount = await page.locator('[aria-label="Start a post"]').count();
-        const signInCount    = await page.locator('a[href*="login"]').count()
-                           + await page.locator(':text("Sign in")').count();
-
-        if (signInCount > 0 && startPostCount === 0) {
-            return {
-                success: false,
-                error: 'NOT_LOGGED_IN: A browser window has opened. Please log in to LinkedIn manually, then re-run the watcher. Your session will be saved automatically for all future automated posts.'
-            };
-        }
-
-        console.error('[Browser] Session active (logged in).');
-
-        // ── Step 3: Open post composer ───────────────────────────────────────
-        const composerSelectors = [
-            '[aria-label="Start a post"]',                           // primary
-            'button:has-text("Start a post")',                       // text match
-            '.share-box-feed-entry__trigger',                        // class fallback
-            '[data-control-name="share.post"]',                       // data-control fallback
-           ' button:has-text("Start a post"), button:has-text("Start post")'
-            // 'button:has-text("Start"):not(:has-text("Started"))'     // generic "Start" button
-           
-        ];
-
-        let composerOpened = false;
-        for (const sel of composerSelectors) {
-            try {
-                const el = page.locator(sel).first();
-                if (await el.count() > 0) {
-                    await el.click({ timeout: 5000 });
-                    composerOpened = true;
-                    console.error(`[SELECTOR] Composer opened via: ${sel}`);
-                    break;
-                }
-            } catch (_) { /* try next selector */ }
-        }
-
-        if (!composerOpened) {
-            return { success: false, error: 'Could not open post composer — "Start a post" button not found.' };
-        }
-
-        await page.waitForTimeout(2500);  // give LinkedIn modal time to fully render
-
-        // ── Step 4: Find editor ──────────────────────────────────────────────
-        // First: wait up to 10s for ANY editor pattern to appear in the DOM
+// ── Profile lock cleanup (prevents Chrome exit code 21 on Windows) ────────────
+function cleanProfileLocks() {
+    const locks = ['SingletonLock', 'SingletonSocket', 'SingletonCookie'];
+    for (const lf of locks) {
         try {
-            await page.waitForSelector(
-                '.ql-editor, [contenteditable="true"], [role="textbox"]',
-                { state: 'visible', timeout: 10000 }
-            );
-            console.error('[Browser] Editor container detected — identifying...');
-        } catch (_) {
-            console.error('[Browser] waitForSelector timed out — attempting selector loop anyway...');
-        }
-
-        const editorSelectors = [
-            '.ql-editor',                                                  // primary Quill editor
-            '[contenteditable="true"][data-placeholder]',                  // contenteditable with placeholder
-            '[role="textbox"]',                                            // ARIA textbox
-            '[contenteditable="true"]',                                    // broader contenteditable
-            'div.editor-content [contenteditable]',                        // nested editor div
-            '.share-creation-state__content [contenteditable]'             // newer LinkedIn modal
-        ];
-
-        let editor = null;
-        for (const sel of editorSelectors) {
-            try {
-                const el = page.locator(sel).first();
-                // waitFor directly — don't pre-check count() which returns 0 during render
-                await el.waitFor({ state: 'visible', timeout: 3000 });
-                editor = el;
-                console.error(`[SELECTOR] Editor found via: ${sel}`);
-                break;
-            } catch (_) { /* try next */ }
-        }
-
-        if (!editor) {
-            return { success: false, error: 'Post composer text area did not appear.' };
-        }
-
-        // ── Step 5: Type content ─────────────────────────────────────────────
-        await editor.click();
-        await page.waitForTimeout(300);
-
-        // Normalize line endings before pasting.
-        // Windows files use \r\n — in LinkedIn's editor each \r\n becomes a double
-        // line break, creating ugly empty lines between every paragraph.
-        // Fix: strip \r so only \n remains, then collapse 3+ newlines to max 2.
-        content = content
-            .replace(/\r\n/g, '\n')   // Windows CRLF → LF
-            .replace(/\r/g, '\n')      // stray CR → LF
-            .replace(/\n{3,}/g, '\n\n') // collapse excessive blank lines
-            .trim();
-
-        // Primary method: clipboard paste (preserves line breaks and emojis)
-        await page.evaluate((text) => {
-            const activeEl = document.querySelector(
-                '.ql-editor, [contenteditable="true"][data-placeholder], [role="textbox"]'
-            );
-            if (activeEl) {
-                activeEl.focus();
-                const dt = new DataTransfer();
-                dt.setData('text/plain', text);
-                activeEl.dispatchEvent(new ClipboardEvent('paste', {
-                    clipboardData: dt,
-                    bubbles: true,
-                    cancelable: true
-                }));
-            }
-        }, content);
-
-        await page.waitForTimeout(800);
-
-        // Verify text appeared — fallback to keyboard.type if empty
-        let editorText = '';
-        try { editorText = await editor.innerText(); } catch (_) {}
-
-        if (!editorText.trim()) {
-            console.error('[Browser] Clipboard paste did not work — falling back to keyboard.type...');
-            await editor.click();
-            await page.keyboard.type(content, { delay: 8 });
-            await page.waitForTimeout(500);
-        }
-
-        console.error(`[Browser] Content typed (${content.split(' ').length} words).`);
-
-        // ── Step 6: Handle dialogs ───────────────────────────────────────────
-        page.on('dialog', async (dialog) => {
-            console.error(`[Browser] Dialog: "${dialog.message()}" — accepting.`);
-            try { await dialog.accept(); } catch (_) {}
-        });
-
-        // ── Step 7: Click Post button ────────────────────────────────────────
-        const postSelectors = [
-            'button.share-actions__primary-action[aria-label="Post"]',    // primary + class
-            'button[aria-label="Post"].share-actions__primary-action',    // same, reversed
-            '.share-actions__primary-action',                              // class only
-            'button[aria-label="Post"]:not([aria-label*="to"])',           // aria-label guard
-            'button:has-text("Post"):not(:has-text("Next")):not(:has-text("Share"))', // text match
-            'button[type="submit"]:not([disabled])',                       // generic submit
-            'div[role="dialog"] button:not([disabled]):last-child'         // last enabled in modal
-        ];
-
-        let postClicked = false;
-        for (const sel of postSelectors) {
-            try {
-                const btn = page.locator(sel).last();
-                if (await btn.count() > 0) {
-                    await btn.click({ timeout: 5000 });
-                    postClicked = true;
-                    console.error(`[SELECTOR] Post button clicked via: ${sel}`);
-                    break;
-                }
-            } catch (_) { /* try next */ }
-        }
-
-        if (!postClicked) {
-            return { success: false, error: 'Could not find the Post button.' };
-        }
-
-        // ── Handle audience selector modal ───────────────────────────────────
-        // LinkedIn sometimes shows an audience picker after the first "Post" click.
-        // If it appears, find and click the final Post button inside it.
-        await page.waitForTimeout(1200);
-        const audienceModal = await page.locator(
-            '.audience-selector, button[aria-label*="audience"], .share-audience-selector'
-        ).count();
-        if (audienceModal > 0) {
-            console.error('[SELECTOR] Audience selector detected — clicking final Post button...');
-            for (const sel of postSelectors) {
-                try {
-                    const btn = page.locator(sel).last();
-                    if (await btn.count() > 0) {
-                        await btn.click({ timeout: 5000 });
-                        console.error(`[SELECTOR] Post button (post-audience) clicked via: ${sel}`);
-                        break;
-                    }
-                } catch (_) {}
-            }
-        }
-
-        // ── Step 8: Confirm success ──────────────────────────────────────────
-        await page.waitForTimeout(4000);
-
-        // Check for at least one success indicator
-        let confirmed = false;
-        try {
-            const toast = await page.locator(
-                'text=Post successful, text=Your post is now live, text=shared, text=posted'
-            ).count();
-            if (toast > 0) { confirmed = true; console.error('[Browser] Success toast detected.'); }
+            fs.unlinkSync(path.join(PROFILE_DIR, lf));
+            log(`[CLEANUP] Removed stale lock: ${lf}`);
         } catch (_) {}
-
-        // Composer closing is also a strong success signal
-        if (!confirmed) {
-            try {
-                const composerGone = (await page.locator(
-                    '.share-creation-state, .share-box__modal'
-                ).count()) === 0;
-                if (composerGone) { confirmed = true; console.error('[Browser] Composer closed — success.'); }
-            } catch (_) {}
-        }
-
-        const feedUrl = page.url();
-        let postUrl = feedUrl;
-        try {
-            if (feedUrl.includes('urn:li:share') || feedUrl.includes('ugcPost')) {
-                postUrl = feedUrl;
-                if (!confirmed) { confirmed = true; console.error('[Browser] Post URL detected — success.'); }
-            }
-        } catch (_) {}
-
-        if (!confirmed) {
-            // Not conclusive but post button was clicked — treat as likely success
-            console.error('[Browser] No explicit success indicator, but Post button was clicked — treating as success.');
-        }
-
-        console.error('[Browser] Post submitted successfully!');
-        return { success: true, postUrl };
-
-    } catch (err) {
-        return { success: false, error: err.message };
-    } finally {
-        if (browser) {
-            try { await browser.close(); } catch (_) {}
-        }
     }
 }
 
-// ── Entry point ──────────────────────────────────────────────────────────────
+// ── Debug screenshot helper ───────────────────────────────────────────────────
+async function saveDebug(page, label) {
+    try {
+        fs.mkdirSync(DEBUG_DIR, { recursive: true });
+        const ts = Date.now();
+        await page.screenshot({ path: path.join(DEBUG_DIR, `${label}_${ts}.png`) });
+        fs.writeFileSync(
+            path.join(DEBUG_DIR, `${label}_${ts}.html`),
+            await page.content(),
+            'utf8'
+        );
+        log(`[DEBUG] Saved screenshot: linkedin_debug/${label}_${ts}.png`);
+    } catch (_) {}
+}
 
-const args = process.argv.slice(2);
+// ── CLI args ──────────────────────────────────────────────────────────────────
+const args  = process.argv.slice(2);
 const cfIdx = args.indexOf('--content-file');
 
 if (cfIdx === -1 || !args[cfIdx + 1]) {
@@ -282,11 +65,367 @@ if (cfIdx === -1 || !args[cfIdx + 1]) {
 
 let content;
 try {
-    content = fs.readFileSync(args[cfIdx + 1], 'utf8');
+    content = fs.readFileSync(args[cfIdx + 1], 'utf8').trim();
 } catch (e) {
     console.log(JSON.stringify({ success: false, error: `Cannot read content file: ${e.message}` }));
     process.exit(1);
 }
+
+// ── Selectors ─────────────────────────────────────────────────────────────────
+
+// Editor: semantic first (aria/role), class-based fallback
+const EDITOR_SELECTOR = [
+    'div[role="textbox"][contenteditable="true"]',
+    'div[contenteditable="true"][aria-multiline="true"]',
+    'div[aria-label="Text editor for creating content"]',
+    'div[aria-label*="editor"][contenteditable="true"]',
+    'div[contenteditable="true"][spellcheck="true"]',
+    '.ql-editor[contenteditable="true"]',
+    'div.share-creation-state__text-editor[contenteditable="true"]',
+    '.editor-content[contenteditable="true"]',
+    'div[role="dialog"] [contenteditable="true"]',
+].join(', ');
+
+// Start-a-post: aria/text first, class-based fallback
+const START_POST_SELECTORS = [
+    '[aria-label="Start a post"]',
+    '[aria-label*="Start a post"]',
+    'button:has-text("Start a post")',
+    '[data-control-name="share.sharebox_open"]',
+    '.share-box-feed-entry__trigger',
+    '.share-creation-state__placeholder',
+    'button.artdeco-button:has-text("Post")',
+    '.share-box__open',
+];
+
+// Post submit button
+const POST_BTN_SELECTORS = [
+    'button.share-actions__primary-action',
+    'button[aria-label="Post"]:not([disabled])',
+    'button[aria-label="Post now"]:not([disabled])',
+    'div[role="dialog"] button.artdeco-button--primary:not([disabled])',
+    'div[role="dialog"] button:has-text("Post"):not([disabled])',
+    '.share-creation-footer__action--primary',
+    'button.artdeco-button--primary:has-text("Post")',
+    '.share-actions__primary-action',
+];
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+
+async function postToLinkedIn(content) {
+
+    // 1. Clean profile lock files BEFORE launching Chrome
+    cleanProfileLocks();
+
+    log('Launching browser with persistent profile...');
+
+    const browser = await chromium.launchPersistentContext(PROFILE_DIR, {
+        headless: false,
+        ignoreDefaultArgs: ['--enable-automation'],
+        args: [
+            '--disable-blink-features=AutomationControlled',
+            '--disable-infobars',
+            '--disable-notifications',
+            '--no-first-run',
+            '--no-default-browser-check',
+        ],
+        viewport: { width: 1280, height: 800 },
+        timeout: 30000,
+        permissions: ['clipboard-read', 'clipboard-write'],
+    });
+
+    const page = browser.pages()[0] || await browser.newPage();
+
+    // Mask automation fingerprints
+    await page.addInitScript(() => {
+        Object.defineProperty(navigator, 'webdriver',  { get: () => undefined });
+        Object.defineProperty(navigator, 'plugins',    { get: () => [1, 2, 3, 4] });
+        Object.defineProperty(navigator, 'languages',  { get: () => ['en-US', 'en'] });
+    });
+    await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
+
+    try {
+        // ── Step 1: Navigate ──────────────────────────────────────────────────
+        log('Navigating to LinkedIn feed (shareActive=true)...');
+        await page.goto('https://www.linkedin.com/feed/?shareActive=true', {
+            waitUntil: 'domcontentloaded',
+            timeout: 30000,
+        });
+
+        // Wait for LinkedIn SPA to finish rendering
+        try {
+            await page.waitForLoadState('networkidle', { timeout: 8000 });
+        } catch (_) {
+            // LinkedIn keeps background requests open — networkidle may not settle
+        }
+        await page.waitForTimeout(2000);
+
+        // ── Step 2: Login check (URL-based — survives DOM obfuscation) ────────
+        const currentUrl = page.url();
+        const onLoginPage = /\/(login|checkpoint|authwall|uas\/login)/i.test(currentUrl);
+
+        if (onLoginPage) {
+            log('NOT_LOGGED_IN: LinkedIn session expired. Waiting up to 5 minutes for manual login...');
+            await saveDebug(page, 'not_logged_in');
+            try {
+                await page.waitForURL(
+                    u => !/\/(login|checkpoint|authwall|uas\/login)/i.test(u),
+                    { timeout: 300000 }
+                );
+                log('Login detected — re-navigating...');
+            } catch {
+                return { success: false, error: 'NOT_LOGGED_IN: Timed out waiting for manual login.' };
+            }
+            await page.goto('https://www.linkedin.com/feed/?shareActive=true', {
+                waitUntil: 'domcontentloaded',
+                timeout: 30000,
+            });
+            try { await page.waitForLoadState('networkidle', { timeout: 8000 }); } catch (_) {}
+            await page.waitForTimeout(2000);
+        }
+
+        // ── Step 3: Find / open the post editor ───────────────────────────────
+        log('Waiting for post editor...');
+
+        let editorFound = await page.locator(EDITOR_SELECTOR).first()
+            .waitFor({ state: 'visible', timeout: 6000 })
+            .then(() => true).catch(() => false);
+
+        if (!editorFound) {
+            log('Editor not auto-opened — trying to click "Start a post" button...');
+            let clicked = false;
+
+            // Try each selector-based button
+            for (const sel of START_POST_SELECTORS) {
+                try {
+                    const btn = page.locator(sel).first();
+                    if (await btn.isVisible().catch(() => false)) {
+                        log(`Clicking button: ${sel}`);
+                        await btn.click();
+                        clicked = true;
+                        break;
+                    }
+                } catch (_) {}
+            }
+
+            // Playwright's getByText — works even with obfuscated class names
+            if (!clicked) {
+                try {
+                    const textBtn = page.getByText('Start a post', { exact: false });
+                    if (await textBtn.first().isVisible({ timeout: 2000 }).catch(() => false)) {
+                        log('Clicking via getByText("Start a post")...');
+                        await textBtn.first().click();
+                        clicked = true;
+                    }
+                } catch (_) {}
+            }
+
+            // Keyboard shortcut 'C' — LinkedIn's built-in composer shortcut
+            // Click body first to guarantee keyboard focus
+            if (!clicked) {
+                log('No button found — focusing body and pressing keyboard shortcut C...');
+                await page.click('body');
+                await page.waitForTimeout(300);
+                await page.keyboard.press('c');
+            }
+
+            // Wait for editor to appear after click/shortcut
+            editorFound = await page.locator(EDITOR_SELECTOR).first()
+                .waitFor({ state: 'visible', timeout: 15000 })
+                .then(() => true).catch(() => false);
+        }
+
+        // Ultimate fallback: Playwright's semantic getByRole
+        if (!editorFound) {
+            log('Trying getByRole("textbox") as final fallback...');
+            editorFound = await page.getByRole('textbox').first()
+                .waitFor({ state: 'visible', timeout: 5000 })
+                .then(() => true).catch(() => false);
+        }
+
+        if (!editorFound) {
+            await saveDebug(page, 'editor_not_found');
+            throw new Error('Post editor not found after all attempts — see linkedin_debug/ for screenshot.');
+        }
+
+        // Resolve the editor locator
+        let editor;
+        const editorLocator = page.locator(EDITOR_SELECTOR);
+        const editorCount   = await editorLocator.count().catch(() => 0);
+        if (editorCount > 0) {
+            editor = editorLocator.first();
+        } else {
+            editor = page.getByRole('textbox').first();
+        }
+
+        await editor.waitFor({ state: 'visible', timeout: 5000 });
+        log('Editor is ready.');
+
+        // ── Step 4: Enter content ─────────────────────────────────────────────
+        const normalized = content
+            .replace(/\r\n/g, '\n')
+            .replace(/\r/g, '\n')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+
+        log(`Entering content (${normalized.split(' ').length} words)...`);
+        await editor.click();
+        await page.waitForTimeout(500);
+
+        // Method 1: Clipboard paste (fires all React events, handles emojis)
+        let contentEntered = false;
+        try {
+            await page.evaluate(async (text) => {
+                const item = new ClipboardItem({
+                    'text/plain': new Blob([text], { type: 'text/plain' }),
+                });
+                await navigator.clipboard.write([item]);
+            }, normalized);
+            await editor.click();
+            await page.keyboard.press('Control+a');
+            await page.waitForTimeout(200);
+            await page.keyboard.press('Control+v');
+            await page.waitForTimeout(1000);
+            const afterPaste = (await editor.innerText().catch(() => '')).trim();
+            if (afterPaste.length > 10) {
+                log('Content entered via clipboard paste.');
+                contentEntered = true;
+            }
+        } catch (e) {
+            log(`Clipboard method failed: ${e.message}`);
+        }
+
+        // Method 2: execCommand insertText
+        if (!contentEntered) {
+            log('Trying execCommand insertText...');
+            await editor.evaluate((el, text) => {
+                el.focus();
+                const sel   = window.getSelection();
+                const range = document.createRange();
+                range.selectNodeContents(el);
+                sel.removeAllRanges();
+                sel.addRange(range);
+                document.execCommand('insertText', false, text);
+            }, normalized);
+            await page.waitForTimeout(1000);
+            const afterExec = (await editor.innerText().catch(() => '')).trim();
+            if (afterExec.length > 10) {
+                log('Content entered via execCommand.');
+                contentEntered = true;
+            }
+        }
+
+        // Method 3: keyboard.type — slow but works everywhere
+        if (!contentEntered) {
+            log('Falling back to keyboard.type (slow)...');
+            await editor.click();
+            await page.keyboard.press('Control+a');
+            await page.waitForTimeout(300);
+            await page.keyboard.type(normalized, { delay: 10 });
+            await page.waitForTimeout(500);
+            const afterType = (await editor.innerText().catch(() => '')).trim();
+            if (!afterType) {
+                throw new Error('All text entry methods failed — editor rejected all input.');
+            }
+            log('Content entered via keyboard.type.');
+            contentEntered = true;
+        }
+
+        log('Content entered successfully.');
+        await page.waitForTimeout(1500);
+
+        // ── Step 5: Click the Post button ─────────────────────────────────────
+        let postBtn = null;
+
+        for (const sel of POST_BTN_SELECTORS) {
+            try {
+                const btn = page.locator(sel).last();
+                if (await btn.isVisible().catch(() => false)) {
+                    postBtn = btn;
+                    log(`Post button found: ${sel}`);
+                    break;
+                }
+            } catch (_) {}
+        }
+
+        // Playwright's semantic fallback
+        if (!postBtn) {
+            try {
+                const roleBtn = page.getByRole('button', { name: /^Post$/i });
+                if (await roleBtn.last().isVisible({ timeout: 3000 }).catch(() => false)) {
+                    postBtn = roleBtn.last();
+                    log('Post button found via getByRole("button", {name: "Post"})');
+                }
+            } catch (_) {}
+        }
+
+        if (!postBtn) {
+            await saveDebug(page, 'post_button_not_found');
+            throw new Error('Post button not found — tried all known selectors.');
+        }
+
+        log('Clicking Post button...');
+        await postBtn.click();
+
+        // ── Step 6: Verify success ────────────────────────────────────────────
+        const TOAST_SELECTOR = [
+            '[data-test-snackbar]',
+            '.artdeco-toast-item--visible',
+            '.artdeco-toast-item',
+            '[role="alert"]',
+        ].join(', ');
+
+        const toastAppeared = await page
+            .waitForSelector(TOAST_SELECTOR, { state: 'visible', timeout: 10000 })
+            .then(() => true).catch(() => false);
+
+        const postUrl = page.url();
+
+        if (toastAppeared) {
+            const toastText = await page.locator(TOAST_SELECTOR).first().innerText().catch(() => '');
+            log(`Toast: "${toastText}"`);
+            const isError = /error|fail|couldn't|went wrong/i.test(toastText);
+            if (!isError) {
+                log(`SUCCESS (toast confirmed) — URL: ${postUrl}`);
+                return { success: true, postUrl };
+            }
+            return { success: false, error: `LinkedIn error toast: "${toastText}"` };
+        }
+
+        // Check for success text elsewhere on page
+        const successText = await page.locator(
+            ':text("Post successful"), :text("Your post is now live"), :text("Your post was shared")'
+        ).count().catch(() => 0);
+        if (successText > 0) {
+            log(`SUCCESS (success text) — URL: ${postUrl}`);
+            return { success: true, postUrl };
+        }
+
+        // Heuristic: composer closed with no error
+        await page.waitForTimeout(2000);
+        const composerOpen  = await page.locator('div[role="dialog"]:has([contenteditable])').count().catch(() => 0);
+        const errorVisible  = await page.locator(
+            ':text("error"), :text("couldn\'t post"), :text("something went wrong"), :text("failed to post")'
+        ).count().catch(() => 0);
+
+        if (composerOpen === 0 && errorVisible === 0) {
+            log(`SUCCESS (composer closed, no errors) — URL: ${postUrl}`);
+            return { success: true, postUrl };
+        }
+
+        await saveDebug(page, 'post_failed');
+        return { success: false, error: 'Post button clicked but no success confirmation received.' };
+
+    } catch (err) {
+        log(`Fatal error: ${err.message}`);
+        try { await saveDebug(page, 'fatal_error'); } catch (_) {}
+        return { success: false, error: err.message };
+    } finally {
+        try { await browser.close(); } catch (_) {}
+    }
+}
+
+// ── Run ───────────────────────────────────────────────────────────────────────
 
 postToLinkedIn(content)
     .then(result => {

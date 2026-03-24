@@ -1,3 +1,8 @@
+---
+name: linkedin_post_creator
+description: Generate a high-quality LinkedIn post on AI, automation, or business topics. Creates a PLAN file and saves the post to Pending_Approval for human review before publishing.
+---
+
 # Skill: LinkedIn Post Creator
 
 ## Purpose
@@ -155,7 +160,7 @@ Write a LinkedIn post following ALL standards below:
 
 **This step MUST complete successfully before any other file is written.**
 
-**File:** `vault/AI_Employee_Vault/Plans/PLAN_LINKEDIN_<timestamp>.md`
+**File:** `vault/AI_Employee_Vault/Plans/linkedin/PLAN_LINKEDIN_<timestamp>.md`
 
 - If file already exists → DO NOT overwrite → STOP with error: "Plan file already exists"
 - Otherwise → CREATE the file now
@@ -275,7 +280,7 @@ If file does not exist → create it. Otherwise → append.
 ## <ISO timestamp> — LINKEDIN_<timestamp> [LINKEDIN POST CREATED]
 
 - Post File: LINKEDIN_POST_<timestamp>.md
-- Plan File: PLAN_LINKEDIN_<timestamp>.md (created)
+- Plan File: Plans/linkedin/PLAN_LINKEDIN_<timestamp>.md (created)
 - Topic: <topic>
 - Hook: <first line of post>
 - Word Count: <n>
@@ -287,23 +292,60 @@ If file does not exist → create it. Otherwise → append.
 
 ---
 
-### Step 8 — Report to Operator
+### Step 8 — Show Post & Ask for Approval
 
-**On success:**
+**On success, display the full post content to the operator and ask for approval:**
+
+Output EXACTLY this format (replace placeholders with actual values):
+
 ```
-✅ LinkedIn Post Created — Awaiting Your Approval
+✅ LinkedIn Post Ready — Please Review
 
-Post File:  Pending_Approval/LINKEDIN_POST_<timestamp>.md
-Plan File:  Plans/PLAN_LINKEDIN_<timestamp>.md
 Topic:      <topic>
 Word Count: <n> words
-Status:     Awaiting approval
+Plan File:  Plans/linkedin/PLAN_LINKEDIN_<timestamp>.md
 
-Next steps:
-→ Review the post in Pending_Approval/LINKEDIN_POST_<timestamp>.md
-→ To approve: move file to Approved/ then run /linkedin_post_handler
-→ To reject:  move file to Rejected/
+---
+
+<full generated post content — exactly as it will appear on LinkedIn>
+
+---
+
+Can I post it?
 ```
+
+**Do NOT add any other instructions, file paths, or "next steps" text. Just show the post and ask the single question: "Can I post it?"**
+
+---
+
+### Step 9 — Handle Operator Response
+
+**This step executes ONLY after the operator responds to the "Can I post it?" question.**
+
+**If operator says YES (any of: yes, y, post it, go ahead, approved, approve, do it):**
+1. Move the post file from `Pending_Approval/linkedin/` to `Approved/linkedin/`:
+   - Source: `vault/AI_Employee_Vault/Pending_Approval/linkedin/LINKEDIN_POST_<timestamp>.md`
+   - Destination: `vault/AI_Employee_Vault/Approved/linkedin/LINKEDIN_POST_<timestamp>.md`
+   - Use Bash `mv` command (or copy+delete on Windows)
+2. Confirm to operator:
+   ```
+   Moved to Approved/linkedin/ — the watcher will now publish it automatically.
+   ```
+3. The `approved_watcher.py` running in the background will detect the file and call `linkedin_executor.run_linkedin_post()` to publish it. No further action needed.
+
+**If operator says NO (any of: no, n, reject, cancel, don't post):**
+1. Move the post file to `Rejected/linkedin/` (create folder if needed):
+   - Source: `vault/AI_Employee_Vault/Pending_Approval/linkedin/LINKEDIN_POST_<timestamp>.md`
+   - Destination: `vault/AI_Employee_Vault/Rejected/linkedin/LINKEDIN_POST_<timestamp>.md`
+2. Confirm to operator:
+   ```
+   Post rejected and moved to Rejected/linkedin/.
+   ```
+
+**If operator wants edits:**
+- Apply the requested changes directly to the post content
+- Update both the Pending_Approval post file AND the Plan file with the revised content
+- Re-display the updated post and ask "Can I post it?" again
 
 **On daily limit (no --force):**
 ```
@@ -352,11 +394,15 @@ If any step fails:
 6. CREATE POST FILE ← only after plan confirmed
 7. Update Dashboard (append)
 8. Write log entry (append)
-9. Report to operator
+9. Show post to operator and ask "Can I post it?" ← NO confirmation before this point
+10. On operator YES → move file to Approved/linkedin/ (approved_watcher handles publishing)
+11. On operator NO → move file to Rejected/linkedin/
 
+Do NOT interrupt or ask for confirmation during steps 1–8.
 Do NOT skip Step 5 (Plan creation).
 Do NOT create post file if Plan creation failed.
 Do NOT write `## Proposed Response` as empty — write N/A explicitly.
+Do NOT tell operator to manually move files — Claude moves it on their behalf.
 
 ---
 
@@ -364,7 +410,7 @@ Do NOT write `## Proposed Response` as empty — write N/A explicitly.
 
 After this skill runs successfully:
 
-- ✅ `Plans/PLAN_LINKEDIN_<timestamp>.md` exists with `## Proposed Response` section
+- ✅ `Plans/linkedin/PLAN_LINKEDIN_<timestamp>.md` exists with `## Proposed Response` section
 - ✅ `Pending_Approval/LINKEDIN_POST_<timestamp>.md` exists with post content
 - ✅ Log entry written to `Logs/log_<YYYY-MM-DD>.md`
 - ✅ Dashboard updated

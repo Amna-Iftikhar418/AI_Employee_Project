@@ -34,9 +34,14 @@ function createClient() {
     });
 
     // QR code — shown in terminal once, then session is saved permanently
+    // FIX: use callback form so qrcode output goes to stderr, not stdout.
+    // Without this, block-drawing characters land on stdout and Python tries
+    // to JSON-parse them, producing "Malformed JSON" errors.
     client.on('qr', (qr) => {
         process.stderr.write('\n[whatsapp_client] Scan this QR code with your phone:\n\n');
-        qrcode.generate(qr, { small: true });
+        qrcode.generate(qr, { small: true }, (qrString) => {
+            process.stderr.write(qrString + '\n');
+        });
         process.stderr.write('\n[whatsapp_client] Waiting for scan...\n');
     });
 

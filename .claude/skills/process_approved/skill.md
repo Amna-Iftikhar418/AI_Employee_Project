@@ -1,3 +1,8 @@
+---
+name: process_approved
+description: Execute any approved non-LinkedIn task from Approved folder. Reads the existing Plan, performs the action, updates Dashboard and Logs, then moves the file to Done.
+---
+
 # Skill: Process Approved Task
 
 ## Purpose

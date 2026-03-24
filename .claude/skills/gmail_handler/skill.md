@@ -1,3 +1,8 @@
+---
+name: gmail_handler
+description: Process email tasks from Needs_Action into Plans and route to Pending_Approval with a complete Proposed Response for human review.
+---
+
 # Skill: Gmail Task Handler
 
 ## Purpose
@@ -109,8 +114,6 @@ status: pending
 
 ## Proposed Response
 
-Subject: Re: <original subject>
-
 Dear <sender first name>,
 
 <Write a complete, professional email reply that directly addresses what the sender asked. Minimum 3 sentences. Must be specific to this email — do NOT use generic filler.>
@@ -138,8 +141,7 @@ Before writing the file, verify all of the following are present:
 1. `from: <email>` in frontmatter (must be actual email address, not empty)
 2. `## Proposed Response` section exists
 3. The response body under `## Proposed Response` is NOT empty and NOT a placeholder
-4. `Subject: Re: <subject>` line is present inside the response
-5. The response is addressed to the sender by first name
+4. The response is addressed to the sender by first name
 
 If ANY of the above is missing → **do NOT save the file** → fix it first → then save.
 

@@ -1,3 +1,8 @@
+---
+name: file_handler
+description: Process general file tasks from Needs_Action folder. Detects sensitive keywords, creates a PLAN file, and routes to Pending_Approval or Done based on content sensitivity.
+---
+
 # Skill: Basic File Handler
 
 ## Purpose
