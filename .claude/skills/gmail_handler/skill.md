@@ -42,7 +42,7 @@ The `send_email_executor.py` script reads the Plan file and looks for a section 
 
 ### Step 1 — Scan Needs_Action for pending email tasks
 
-- Glob all files matching `vault/AI_Employee_Vault/Needs_Action/TASK_*.md`
+- Glob all files matching `vault/AI_Employee_Vault/Needs_Action/email/TASK_*.md`
 - Filter to those with `type: email_task` or `source: gmail` in frontmatter
 - Process each one in order
 
@@ -73,11 +73,11 @@ Detect keywords present in subject + body:
 
 ### Step 4 — Write the Plan file (BLOCKING — must complete before anything else)
 
-**File:** `vault/AI_Employee_Vault/Plans/PLAN_<task_name>.md`
+**File:** `vault/AI_Employee_Vault/Plans/email/PLAN_<task_name>.md`
 
 - If file already exists AND contains `## Proposed Response` → skip to Step 5
 - If file already exists but is MISSING `## Proposed Response` → DELETE it and recreate
-- Otherwise → create new file
+- Otherwise → create new file (create the `email/` subdirectory if it does not exist)
 
 **WRITE EXACTLY THIS FORMAT** (fill in all `<placeholders>`):
 
@@ -156,14 +156,14 @@ After the Plan file is saved and verified:
 status: awaiting_approval
 reason: email_reply_requires_approval
 detected_keywords: [<keywords>]
-plan_reference: PLAN_<task_name>.md
+plan_reference: Plans/email/PLAN_<task_name>.md
 ```
 
 2. Move file:
 ```
-vault/AI_Employee_Vault/Needs_Action/TASK_<task_name>.md
+vault/AI_Employee_Vault/Needs_Action/email/TASK_<task_name>.md
 →
-vault/AI_Employee_Vault/Pending_Approval/TASK_<task_name>.md
+vault/AI_Employee_Vault/Pending_Approval/email/TASK_<task_name>.md
 ```
 
 3. Write log entry to `vault/AI_Employee_Vault/Logs/log_YYYY-MM-DD.md` (append):
@@ -199,7 +199,7 @@ If intent is `info_only`:
 
 After this skill runs, for EVERY email task processed:
 
-- ✅ `Plans/PLAN_<task_name>.md` exists with `## Proposed Response` section
+- ✅ `Plans/email/PLAN_<task_name>.md` exists with `## Proposed Response` section
 - ✅ `from:` frontmatter field contains the sender's email address
 - ✅ Task moved out of `Needs_Action/`
 - ✅ Log entry written

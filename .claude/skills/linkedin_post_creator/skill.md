@@ -55,8 +55,8 @@ When the operator requests a LinkedIn post creation, OR when the daily scheduler
 - If not found or count < 5 → continue
 
 **Gate 0b — Queue occupancy check:**
-- Glob: `vault/AI_Employee_Vault/Pending_Approval/LINKEDIN_POST_*.md`
-- Glob: `vault/AI_Employee_Vault/Approved/LINKEDIN_POST_*.md`
+- Glob: `vault/AI_Employee_Vault/Pending_Approval/linkedin/LINKEDIN_POST_*.md`
+- Glob: `vault/AI_Employee_Vault/Approved/linkedin/LINKEDIN_POST_*.md`
 - If ANY file found in either location → STOP
   Report:
   ```
@@ -228,10 +228,10 @@ pending
 
 **Only execute this step AFTER Plan file is confirmed saved.**
 
-**File:** `vault/AI_Employee_Vault/Pending_Approval/LINKEDIN_POST_<timestamp>.md`
+**File:** `vault/AI_Employee_Vault/Pending_Approval/linkedin/LINKEDIN_POST_<timestamp>.md`
 
 - If file already exists → DO NOT overwrite → STOP with error
-- Otherwise → CREATE the file now
+- Otherwise → CREATE the file now (create the `linkedin/` subdirectory if it does not exist)
 
 **WRITE EXACTLY THIS FORMAT:**
 
