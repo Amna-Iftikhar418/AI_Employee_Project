@@ -327,8 +327,10 @@ pending
         task_name = self.extract_task_name(task_file)
         plan_path = self.whatsapp_plans / f"PLAN_{task_name}.md"
 
-        if plan_path.exists():
+        if plan_path.exists() and self._plan_is_valid(plan_path):
             return
+        if plan_path.exists():
+            plan_path.unlink()
 
         content = task_file.read_text(encoding="utf-8")
         created = datetime.now().isoformat()
@@ -468,18 +470,14 @@ pending
         if task_type == "email_task":
             plan_path = self.email_plans / f"PLAN_{task_name}.md"
             pending_dir = self.email_pending
-            # Let Claude generate the plan directly from the raw task file
             if not plan_path.exists() or not self._plan_is_valid(plan_path):
-                self.run_claude_skill("gmail_handler", task_file_path)
-                return  # next loop cycle will route it
+                self._generate_email_plan(task_file_path)
 
         elif task_type == "whatsapp_task":
             plan_path = self.whatsapp_plans / f"PLAN_{task_name}.md"
             pending_dir = self.whatsapp_pending
-            # Let Claude generate the plan directly from the raw task file
             if not plan_path.exists() or not self._plan_is_valid(plan_path):
-                self.run_claude_skill("whatsapp_handler", task_file_path)
-                return  # next loop cycle will route it
+                self._generate_whatsapp_plan(task_file_path)
 
         else:
             plan_path = self.plans_dir / f"PLAN_{task_name}.md"
