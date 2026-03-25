@@ -224,9 +224,13 @@ def _free_port(port: int) -> None:
 
     if sys.platform == "win32":
         try:
-            out = subprocess.check_output(
-                f'netstat -ano | findstr ":{port}"',
-                shell=True, text=True, stderr=subprocess.DEVNULL
+            netstat = subprocess.run(
+                ["netstat", "-ano"],
+                capture_output=True, text=True, stderr=subprocess.DEVNULL
+            )
+            out = "\n".join(
+                line for line in netstat.stdout.splitlines()
+                if f":{port}" in line
             )
             for line in out.splitlines():
                 parts = line.split()

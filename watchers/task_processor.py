@@ -164,7 +164,7 @@ class TaskProcessor:
                 capture_output=True,
                 text=True,
                 timeout=300,
-                shell=True if sys.platform == "win32" else False,
+                shell=False,
             )
             logger.info(f"Claude skill executed: {skill_name} for {file_path.name}")
         except Exception as e:

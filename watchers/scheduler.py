@@ -41,7 +41,7 @@ def run_linkedin_post():
             cwd=str(ROOT),
             capture_output=False,
             timeout=300,
-            shell=True if sys.platform == "win32" else False,
+            shell=False,
         )
         if result.returncode == 0:
             logger.info("linkedin_post_creator skill completed.")
