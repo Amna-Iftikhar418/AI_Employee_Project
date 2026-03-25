@@ -8,7 +8,27 @@
 
 ---
 
-## Live Activity — 2026-03-25
+## Table of Contents
+
+- [Demo Run — Production Activity](#demo-run--production-activity)
+- [What It Does](#what-it-does)
+- [Architecture](#architecture)
+- [Agent Skills](#agent-skills-claudeskills)
+- [Watchers](#watchers-watchers)
+- [MCP Server](#mcp-server-mcp_serverpy)
+- [Security](#security)
+- [Error Handling](#error-handling)
+- [Resilience](#resilience)
+- [Audit Logging](#audit-logging)
+- [Human Approval Workflow](#human-approval-workflow)
+- [Vault Structure](#vault-structure-vaultai_employee_vault)
+- [Setup](#setup)
+- [Key Design Decisions](#key-design-decisions)
+- [Compliance Rules](#compliance-rules)
+
+---
+
+## Demo Run — Production Activity
 
 Tasks completed today in production:
 
