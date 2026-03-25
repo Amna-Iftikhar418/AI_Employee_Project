@@ -1,0 +1,18 @@
+{
+  "approved": [
+    "TASK_email_Amna_Iftikhar_20260325_095124_538518.txt.md",
+    "TASK_whatsapp_Amna_09_18AM.md",
+    "TASK_whatsapp_Amna_04_06PM.txt.md",
+    "TASK_whatsapp_Amna_04_06PM_1.txt.md",
+    "TASK_whatsapp_Amna_04_06PM_2.txt.md",
+    "TASK_email_Amna_Iftikhar_20260325_165458_872586.txt.md"
+  ],
+  "skipped": [
+    "TASK_email_Honhaar_Jawan_20260325_122427_057508.txt.md",
+    "TASK_email_Mubashir_Ali_20260325_120013_893103.txt.md",
+    "TASK_email_Ollama_20260325_110746_103711.txt.md",
+    "TASK_email_Amna_Iftikhar_20260325_165529_682896.txt.md",
+    "TASK_email_Team_Snapchat_20260325_170134_448279.txt.md",
+    "TASK_email_LinkedIn_20260325_180155_264235.txt.md"
+  ]
+}

@@ -719,8 +719,13 @@ pending
                         logger.warning(f"Email send failed — retry {retry_count + 1}/3 for {task_name}")
                     else:
                         self.update_task_status(task_file_path, "failed")
-                        self.write_log(task_name, "FAILED", "Max retries (3) reached — client NOT notified. Manual fix required.")
+                        self.write_log(task_name, "FAILED", "Max retries (3) reached — client NOT notified. Moved to Failed/email/.")
                         logger.error(f"Max retries reached — email NOT sent to client: {task_name}")
+                        failed_dir = Path(self.vault_path) / "Failed" / "email"
+                        failed_dir.mkdir(parents=True, exist_ok=True)
+                        failed_target = failed_dir / task_file_path.name
+                        shutil.move(str(task_file_path), str(failed_target))
+                        logger.info(f"Moved failed task to Failed/email/: {task_name}")
         else:
             logger.info(f"Processing approved task: {task_name}")
             self.update_task_status(task_file_path, "completed")

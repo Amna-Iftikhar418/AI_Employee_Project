@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -33,6 +34,7 @@ LOGS_DIR    = VAULT / "Logs"
 NODE_SCRIPT = ROOT / "linkedin_post.js"
 
 MAX_RETRIES = 2   # one retry on non-terminal errors
+DEV_MODE = os.getenv("DEV_MODE", "false").strip().lower() == "true"
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -259,12 +261,26 @@ def run_linkedin_post(file_path):
         )
         return False
 
+    # ── DEV_MODE guard ────────────────────────────────────────────────────────
+    if DEV_MODE:
+        print(f"[DEV MODE] Would have posted to LinkedIn — skipping actual browser call.")
+        _append_log(
+            f"## {datetime.now().isoformat()} — {file_path.stem} [DEV MODE]\n\n"
+            f"- Post File: {file_path.name}\n"
+            f"- Topic: {topic}\n"
+            f"- Status: skipped (DEV_MODE=true)\n"
+        )
+        return False
+
     # ── Retry loop ────────────────────────────────────────────────────────────
     response = {}
     last_error = "No attempts made"
 
     for attempt in range(1, MAX_RETRIES + 1):
         if attempt > 1:
+            backoff = 5 * (attempt - 1)
+            print(f"[RETRY] Waiting {backoff}s before attempt {attempt}/{MAX_RETRIES}...")
+            time.sleep(backoff)
             print(f"[RETRY] Attempt {attempt}/{MAX_RETRIES} — previous error: {last_error}")
 
         response = _run_browser_attempt(post_content, attempt)

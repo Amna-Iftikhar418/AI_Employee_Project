@@ -348,6 +348,7 @@ def _launch_all() -> None:
     _spawn(["uv", "run", "watchers/whatsapp_inbox_watcher.py"])
 
     _spawn(["uv", "run", "watchers/approved_watcher.py"])
+    _spawn(["uv", "run", "watchers/pending_approval_watcher.py"])
     _spawn(["uv", "run", "watchers/scheduler.py"])
 
     log.info("=" * 55)

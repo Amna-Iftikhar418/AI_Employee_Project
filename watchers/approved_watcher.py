@@ -21,6 +21,8 @@ Run with:
 import subprocess
 import sys
 import time
+import urllib.request
+import urllib.error
 from pathlib import Path
 
 RETRY_COOLDOWN = 600  # seconds before re-attempting a failed file (10 min)
@@ -43,8 +45,20 @@ SEND_EMAIL_EXECUTOR     = ROOT / ".claude" / "commands" / "send_email_executor.p
 PROCESS_APPROVED_EXECUTOR = ROOT / ".claude" / "commands" / "process_approved_executor.py"
 
 
+def _mcp_is_reachable(url: str = "http://localhost:8001/health", timeout: int = 3) -> bool:
+    """Return True if the MCP server responds to a health check."""
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            return resp.status < 500
+    except Exception:
+        return False
+
+
 def run_send_email_executor(file_path: Path) -> None:
     """Send an approved email via send_email_executor.py (no Claude spawn)."""
+    if not _mcp_is_reachable():
+        print(f"[WARN] MCP server unreachable — skipping email send for: {file_path.name}. Will retry on next cycle.")
+        return
     print(f"[AUTO] Sending email for: {file_path.name}")
     try:
         result = subprocess.run(
@@ -105,7 +119,7 @@ def run_linkedin_file(file_path: Path) -> None:
 
 APPROVED_ROOT   = ROOT / "vault" / "AI_Employee_Vault" / "Approved"
 APPROVED_LINKEDIN = APPROVED_ROOT / "linkedin"
-PROCESSED_FILE  = APPROVED_LINKEDIN / ".processed_approved.json"
+PROCESSED_FILE  = APPROVED_ROOT / ".processed_approved.json"
 CHECK_INTERVAL  = 5  # seconds between scans
 
 
@@ -203,10 +217,8 @@ def watch():
             if APPROVED_LINKEDIN.exists():
                 all_files.extend(sorted(APPROVED_LINKEDIN.glob("LINKEDIN_POST_*.md")))
 
-            # Other approved tasks (Claude skill execution)
-            for subdir in APPROVED_ROOT.iterdir():
-                if subdir.is_dir() and subdir.name != "linkedin":
-                    all_files.extend(sorted(subdir.glob("TASK_*.md")))
+            # Email and WhatsApp tasks are handled exclusively by task_processor.py
+            # to avoid race conditions and FileLock conflicts.
 
             # Process files in order
             for file_path in all_files:
