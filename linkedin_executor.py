@@ -84,6 +84,30 @@ def _append_log(block: str):
     append_log(LOGS_DIR, block)
 
 
+def _cleanup_linkedin_related_files(file_path: Path, plan_reference: str):
+    """Remove related LinkedIn plan/pending files after successful post."""
+    # Remove plan file
+    if plan_reference:
+        plan_path = PLANS / Path(plan_reference).name
+        if plan_path.exists():
+            plan_path.unlink()
+            print(f"[CLEANUP] Deleted LinkedIn plan file: {plan_path}")
+
+    # Also look for plans matching the file stem
+    for plan_file in PLANS.glob(f"*{file_path.stem}*"):
+        if plan_file.exists():
+            plan_file.unlink()
+            print(f"[CLEANUP] Deleted LinkedIn plan file: {plan_file}")
+
+    # Remove from Pending_Approval/linkedin if exists
+    linkedin_pending = VAULT / "Pending_Approval" / "linkedin"
+    if linkedin_pending.exists():
+        for pending_file in linkedin_pending.glob(f"*{file_path.stem}*"):
+            if pending_file.exists():
+                pending_file.unlink()
+                print(f"[CLEANUP] Deleted from Pending_Approval: {pending_file}")
+
+
 # ── Browser call (single attempt) ────────────────────────────────────────────
 
 def _clean_profile_locks():
@@ -330,6 +354,9 @@ def run_linkedin_post(file_path):
     DONE.mkdir(parents=True, exist_ok=True)
     done_path = DONE / file_path.name
     shutil.move(str(file_path), str(done_path))
+
+    # Cleanup related files
+    _cleanup_linkedin_related_files(file_path, plan_reference)
 
     print(f"[AUTO]  Moved to Done/{file_path.name}")
     print(f"[AUTO]  Dashboard + log updated.")

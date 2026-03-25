@@ -333,10 +333,13 @@ class WhatsAppWatcher:
 
     def _create_inbox_file(self, sender: str, text: str, message_id: str = "") -> None:
         key = self._make_key(sender, text, message_id)
+        logger.info(f"[DEBUG] Creating inbox file for sender={sender}, msg_id={message_id}, key={key[:50]}...")
         if key in self._processed:
+            logger.info(f"[DEBUG] Key already processed, skipping: {key[:50]}...")
             return
         filepath = self._unique_inbox_path(sender)
         content  = f"From: {sender}\nSource: WhatsApp\n\nBody:\n{text}\n"
+        logger.info(f"[DEBUG] Writing to: {filepath}")
         try:
             filepath.write_text(content, encoding="utf-8")
             self._save_processed(key)
@@ -434,6 +437,7 @@ class WhatsAppWatcher:
 
                 try:
                     msg = json.loads(raw_line)
+                    logger.info(f"[DEBUG] Received JSON from JS: sender={msg.get('sender', 'N/A')[:30]}")
 
                     # Validate schema — reject unexpected or malformed payloads
                     if not isinstance(msg, dict):
@@ -452,8 +456,11 @@ class WhatsAppWatcher:
                     text       = text[:4000].strip()
                     message_id = str(message_id)[:128] if message_id else ""
 
+                    logger.info(f"[DEBUG] Processing message: sender={sender}, text_len={len(text)}, msg_id={message_id[:20] if message_id else 'none'}...")
                     if text:
                         self._create_inbox_file(sender, text, message_id)
+                    else:
+                        logger.info("[DEBUG] Skipping empty text message")
                 except json.JSONDecodeError:
                     logger.debug(f"Non-JSON from JS stdout: {raw_line[:200]!r}")
 

@@ -91,6 +91,7 @@ def load_task(task_file: Path) -> dict:
         "type": meta.get("type", ""),
         "status": meta.get("status", ""),
         "plan_reference": meta.get("plan_reference", ""),
+        "original_file": meta.get("original_file", ""),
         "original_sender": sender,
         "original_subject": subject,
     }
@@ -252,6 +253,63 @@ def move_to_done(task_file: Path) -> Path:
     return dest
 
 
+def cleanup_related_files(task: dict, task_name: str):
+    """
+    Remove all related files from inbox, needs_action, plans, pending_approval
+    when a task is completed successfully.
+    """
+    import shutil
+
+    # Determine paths based on task type
+    inbox_subdir = VAULT / "Inbox" / "email"
+    archive_dir = VAULT / "Inbox" / "Archive"
+    needs_action_dir = VAULT / "Needs_Action" / "email"
+    plans_dir = VAULT / "Plans" / "email"
+    pending_dir = VAULT / "Pending_Approval" / "email"
+
+    # Remove original inbox file
+    original_file = task.get("original_file", "")
+    if original_file:
+        inbox_file = inbox_subdir / original_file
+        archive_file = archive_dir / original_file
+        if inbox_file.exists():
+            inbox_file.unlink()
+            logger.info(f"[CLEANUP] Deleted inbox file: {inbox_file}")
+        if archive_file.exists():
+            archive_file.unlink()
+            logger.info(f"[CLEANUP] Deleted archived inbox file: {archive_file}")
+
+    # Get task filename
+    task_filename = f"TASK_{task_name}.md"
+
+    # Remove from Needs_Action
+    needs_action_file = needs_action_dir / task_filename
+    if needs_action_file.exists():
+        needs_action_file.unlink()
+        logger.info(f"[CLEANUP] Deleted from Needs_Action: {needs_action_file}")
+
+    # Remove plan file
+    plan_reference = task.get("plan_reference", "")
+    plan_path = None
+    if plan_reference:
+        plan_path = plans_dir / Path(plan_reference).name
+        if plan_path.exists():
+            plan_path.unlink()
+            logger.info(f"[CLEANUP] Deleted plan file: {plan_path}")
+
+    # Also try derived plan name
+    derived_plan = plans_dir / f"PLAN_{task_name}.md"
+    if derived_plan.exists() and derived_plan != plan_path:
+        derived_plan.unlink()
+        logger.info(f"[CLEANUP] Deleted derived plan file: {derived_plan}")
+
+    # Remove from Pending_Approval
+    pending_file = pending_dir / task_filename
+    if pending_file.exists():
+        pending_file.unlink()
+        logger.info(f"[CLEANUP] Deleted from Pending_Approval: {pending_file}")
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def run(task_path_str: str) -> int:
@@ -338,7 +396,10 @@ def run(task_path_str: str) -> int:
         update_dashboard(task_name, plan["to"], plan["subject"], is_dry)
 
         # ── Step 7: Move to Done ──────────────────────────────────────────────
-        move_to_done(task_file)
+        done_path = move_to_done(task_file)
+
+        # ── Step 8: Cleanup related files ─────────────────────────────────────
+        cleanup_related_files(task, task_name)
 
         # ── Output result as JSON for Claude to parse ─────────────────────────
         output = {

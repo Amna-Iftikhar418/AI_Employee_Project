@@ -1,0 +1,20 @@
+From: Ollama <hello@ollama.com>
+Subject: Ollama session usage at 90%
+
+Body:
+Hello amnaiftikhar416,
+ 
+You've reached 90% of your session limit for your free plan. Your usage resets in in 52 minutes, or you can upgrade your plan for
+higher limits:
+ 
+
+Upgrade Ollama [https://ollama.com/pricing]
+
+ 
+Just a as a heads up, you can view your usage at any time or disable these notifications here [https://ollama.com/settings].
+ 
+If you have any questions, feel free to reach out. We’re here to help!
+ 
+– The Ollama Team
+ 
+

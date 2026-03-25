@@ -119,7 +119,7 @@ Dear <sender first name>,
 <Write a complete, professional email reply that directly addresses what the sender asked. Minimum 3 sentences. Must be specific to this email — do NOT use generic filler.>
 
 Best regards,
-AI Employee
+Amna Iftikhar
 
 ## Approval Required
 Yes — email reply requires human approval before sending.

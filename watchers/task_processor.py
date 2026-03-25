@@ -425,6 +425,170 @@ pending
             file_path.write_text(content, encoding="utf-8")
 
     # ------------------------------------------------------------------
+    # Cleanup related files when task is completed
+    # ------------------------------------------------------------------
+
+    def _cleanup_completed_task(self, done_file_path: Path):
+        """
+        Remove all related files from inbox, needs_action, plans, pending_approval
+        when a task file in Done/ has status: completed.
+        """
+        try:
+            content = done_file_path.read_text(encoding="utf-8")
+        except Exception as e:
+            logger.error(f"Cannot read done file for cleanup: {done_file_path.name}: {e}")
+            return
+
+        # Check if status is completed
+        status_match = re.search(r"^status:\s*(\w+)", content, re.MULTILINE)
+        if not status_match or status_match.group(1).lower() != "completed":
+            return
+
+        # Extract original_file and plan_reference from frontmatter
+        original_file_match = re.search(r"^original_file:\s*(.+)", content, re.MULTILINE)
+        plan_reference_match = re.search(r"^plan_reference:\s*(.+)", content, re.MULTILINE)
+        type_match = re.search(r"^type:\s*(\S+)", content, re.MULTILINE)
+
+        task_type = type_match.group(1).strip() if type_match else "email_task"
+        is_whatsapp = task_type == "whatsapp_task"
+
+        # Determine subdirs based on task type
+        inbox_subdir = self.inbox_dir / ("whatsapp" if is_whatsapp else "email")
+        archive_dir = self.inbox_dir / "Archive"
+        needs_action_dir = self.whatsapp_needs_action if is_whatsapp else self.email_needs_action
+        plans_dir = self.whatsapp_plans if is_whatsapp else self.email_plans
+        pending_dir = self.whatsapp_pending if is_whatsapp else self.email_pending
+
+        # Remove original inbox file (from inbox or archive)
+        if original_file_match:
+            original_filename = original_file_match.group(1).strip()
+            inbox_file = inbox_subdir / original_filename
+            archive_file = archive_dir / original_filename
+
+            if inbox_file.exists():
+                inbox_file.unlink()
+                logger.info(f"[CLEANUP] Deleted inbox file: {inbox_file}")
+            if archive_file.exists():
+                archive_file.unlink()
+                logger.info(f"[CLEANUP] Deleted archived inbox file: {archive_file}")
+
+        # Determine task file name from done file
+        task_filename = done_file_path.name
+
+        # Remove from Needs_Action
+        needs_action_file = needs_action_dir / task_filename
+        if needs_action_file.exists():
+            needs_action_file.unlink()
+            logger.info(f"[CLEANUP] Deleted from Needs_Action: {needs_action_file}")
+
+        # Remove plan file
+        if plan_reference_match:
+            plan_filename = plan_reference_match.group(1).strip()
+            # Handle both with and without PLAN_ prefix
+            plan_path = plans_dir / Path(plan_filename).name
+            if plan_path.exists():
+                plan_path.unlink()
+                logger.info(f"[CLEANUP] Deleted plan file: {plan_path}")
+
+            # Also try deriving plan name from task name
+            task_name = self.extract_task_name(done_file_path)
+            derived_plan = plans_dir / f"PLAN_{task_name}.md"
+            if derived_plan.exists() and derived_plan != plan_path:
+                derived_plan.unlink()
+                logger.info(f"[CLEANUP] Deleted derived plan file: {derived_plan}")
+
+        # Remove from Pending_Approval
+        pending_file = pending_dir / task_filename
+        if pending_file.exists():
+            pending_file.unlink()
+            logger.info(f"[CLEANUP] Deleted from Pending_Approval: {pending_file}")
+
+        # For LinkedIn posts, also clean up the Pending_Approval directory
+        if task_type == "linkedin_post":
+            linkedin_pending = self.pending_approval_dir / "linkedin"
+            linkedin_plan = self.plans_dir / "linkedin"
+
+            # Remove from linkedin pending
+            if linkedin_pending.exists():
+                for f in linkedin_pending.glob(f"*{done_file_path.stem}*"):
+                    f.unlink()
+                    logger.info(f"[CLEANUP] Deleted LinkedIn pending file: {f}")
+
+            # Remove linkedin plan
+            if linkedin_plan.exists():
+                for f in linkedin_plan.glob(f"*{done_file_path.stem}*"):
+                    f.unlink()
+                    logger.info(f"[CLEANUP] Deleted LinkedIn plan file: {f}")
+
+    def _cleanup_related_files_for_task(self, done_file_path: Path, task_type: str):
+        """
+        Cleanup helper for tasks moved to Done by process_approved_task.
+        Removes related files from inbox, needs_action, plans, pending_approval.
+        """
+        try:
+            content = done_file_path.read_text(encoding="utf-8")
+        except Exception as e:
+            logger.error(f"Cannot read done file for cleanup: {done_file_path.name}: {e}")
+            return
+
+        # Extract original_file and plan_reference from frontmatter
+        original_file_match = re.search(r"original_file:\s*(.+)", content)
+        plan_reference_match = re.search(r"plan_reference:\s*(.+)", content)
+
+        is_whatsapp = task_type == "whatsapp_task"
+
+        # Determine subdirs based on task type
+        inbox_subdir = self.inbox_dir / ("whatsapp" if is_whatsapp else "email")
+        archive_dir = self.inbox_dir / "Archive"
+        needs_action_dir = self.whatsapp_needs_action if is_whatsapp else self.email_needs_action
+        plans_dir = self.whatsapp_plans if is_whatsapp else self.email_plans
+        pending_dir = self.whatsapp_pending if is_whatsapp else self.email_pending
+
+        # Remove original inbox file (from inbox or archive)
+        if original_file_match:
+            original_filename = original_file_match.group(1).strip()
+            inbox_file = inbox_subdir / original_filename
+            archive_file = archive_dir / original_filename
+
+            if inbox_file.exists():
+                inbox_file.unlink()
+                logger.info(f"[CLEANUP] Deleted inbox file: {inbox_file}")
+            if archive_file.exists():
+                archive_file.unlink()
+                logger.info(f"[CLEANUP] Deleted archived inbox file: {archive_file}")
+
+        # Determine task file name
+        task_filename = done_file_path.name
+        task_name = self.extract_task_name(done_file_path)
+
+        # Remove from Needs_Action
+        needs_action_file = needs_action_dir / task_filename
+        if needs_action_file.exists():
+            needs_action_file.unlink()
+            logger.info(f"[CLEANUP] Deleted from Needs_Action: {needs_action_file}")
+
+        # Remove plan file
+        plan_path = None
+        if plan_reference_match:
+            plan_filename = plan_reference_match.group(1).strip()
+            plan_path = plans_dir / Path(plan_filename).name
+            if plan_path.exists():
+                plan_path.unlink()
+                logger.info(f"[CLEANUP] Deleted plan file: {plan_path}")
+
+        # Also try deriving plan name from task name
+        derived_plan = plans_dir / f"PLAN_{task_name}.md"
+        if derived_plan.exists() and derived_plan != plan_path:
+            derived_plan.unlink()
+            logger.info(f"[CLEANUP] Deleted derived plan file: {derived_plan}")
+
+        # Remove from Pending_Approval
+        pending_file = pending_dir / task_filename
+        if pending_file.exists():
+            pending_file.unlink()
+            logger.info(f"[CLEANUP] Deleted from Pending_Approval: {pending_file}")
+
+    # ------------------------------------------------------------------
     # Inbox cleanup (called on approve/reject)
     # ------------------------------------------------------------------
 
@@ -562,6 +726,10 @@ pending
             self.update_task_status(task_file_path, "completed")
             target = done_dir / task_file_path.name
             shutil.move(str(task_file_path), str(target))
+
+            # Cleanup related files for WhatsApp/general tasks
+            self._cleanup_related_files_for_task(target, task_type)
+
             self.update_dashboard(task_name, "Completed")
             self.write_log(task_name, "EXECUTED", "Approved and completed")
             logger.info(f"Completed: {task_name}")
@@ -583,11 +751,28 @@ pending
         self.write_log(task_name, "REJECTED", "Task rejected by user")
 
     # ------------------------------------------------------------------
+    # Cleanup loop for completed tasks
+    # ------------------------------------------------------------------
+
+    def _cleanup_done_files(self):
+        """Scan Done folder and cleanup related files for completed tasks."""
+        try:
+            # Check all done subdirectories
+            for subdir in [self.email_done, self.whatsapp_done, self.done_dir / "linkedin"]:
+                if not subdir.exists():
+                    continue
+                for file in subdir.glob("*.md"):
+                    self._cleanup_completed_task(file)
+        except Exception as e:
+            logger.error(f"Error in cleanup loop: {e}")
+
+    # ------------------------------------------------------------------
     # Main loop
     # ------------------------------------------------------------------
 
     def run(self):
         check_interval = int(os.getenv("TASK_PROCESSOR_INTERVAL", "20"))
+        cleanup_counter = 0
         logger.info(f"Starting Task Processor (interval: {check_interval}s)...")
 
         while True:
@@ -600,6 +785,12 @@ pending
 
                 for file in list(self.email_rejected.glob("TASK_*.md")) + list(self.whatsapp_rejected.glob("TASK_*.md")):
                     self.process_rejected_task(file)
+
+                # Run cleanup every 5 iterations
+                cleanup_counter += 1
+                if cleanup_counter >= 5:
+                    self._cleanup_done_files()
+                    cleanup_counter = 0
 
                 time.sleep(check_interval)
 
