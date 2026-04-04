@@ -749,8 +749,38 @@ pending
         logger.info(f"Rejected task: {task_name}")
         self.update_task_status(task_file_path, "rejected")
 
+        task_type = self.get_task_type(task_file_path)
+
         # Archive original inbox file and clean up Needs_Action
         self._cleanup_inbox_file(task_file_path)
+
+        # Clean up plan file
+        is_whatsapp = task_type == "whatsapp_task"
+        plans_dir = self.whatsapp_plans if is_whatsapp else self.email_plans
+        plan_path = plans_dir / f"PLAN_{task_name}.md"
+        if plan_path.exists():
+            plan_path.unlink()
+            logger.info(f"[CLEANUP] Deleted plan for rejected task: {plan_path.name}")
+
+        # Also check plan_reference in frontmatter
+        try:
+            content = task_file_path.read_text(encoding="utf-8")
+            plan_ref_match = re.search(r"plan_reference:\s*(.+)", content)
+            if plan_ref_match:
+                ref_name = plan_ref_match.group(1).strip()
+                ref_path = plans_dir / Path(ref_name).name
+                if ref_path.exists() and ref_path != plan_path:
+                    ref_path.unlink()
+                    logger.info(f"[CLEANUP] Deleted referenced plan: {ref_path.name}")
+        except Exception:
+            pass
+
+        # Clean up from Pending_Approval if still there
+        pending_dir = self.whatsapp_pending if is_whatsapp else self.email_pending
+        pending_file = pending_dir / task_file_path.name
+        if pending_file.exists():
+            pending_file.unlink()
+            logger.info(f"[CLEANUP] Deleted from Pending_Approval: {pending_file.name}")
 
         self.update_dashboard(task_name, "Rejected")
         self.write_log(task_name, "REJECTED", "Task rejected by user")

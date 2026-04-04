@@ -15,6 +15,7 @@ can still move files manually — approved_watcher.py handles them either way.
 import ctypes
 import json
 import logging
+import re
 import shutil
 import time
 from datetime import datetime
@@ -29,6 +30,9 @@ LOGS_DIR    = VAULT / "Logs"
 DASHBOARD   = VAULT / "Dashboard.md"
 STATE_FILE  = PENDING_DIR / ".processed_pending_review.json"
 
+REJECTED_DIR = VAULT / "Rejected"
+PLANS_DIR    = VAULT / "Plans"
+INBOX_DIR    = VAULT / "Inbox"
 SUBDIRS        = ["email", "whatsapp"]   # linkedin handled separately
 CHECK_INTERVAL = 10                      # seconds between scans
 
@@ -111,6 +115,47 @@ def _append_log(subdir: str, filename: str, action: str) -> None:
         log.warning(f"Could not write log: {e}")
 
 
+def _cleanup_related_files(subdir: str, task_file: Path) -> None:
+    """Remove related plan and inbox files when a task is approved or rejected."""
+    try:
+        content = task_file.read_text(encoding="utf-8")
+    except Exception:
+        return
+
+    # Delete plan file
+    task_name = task_file.stem
+    if task_name.startswith("TASK_"):
+        task_name = task_name[5:]
+
+    plan_path = PLANS_DIR / subdir / f"PLAN_{task_name}.md"
+    if plan_path.exists():
+        plan_path.unlink()
+        log.info(f"[CLEANUP] Deleted plan: {plan_path.name}")
+
+    # Also check plan_reference in frontmatter
+    plan_ref_match = re.search(r"plan_reference:\s*(.+)", content)
+    if plan_ref_match:
+        ref_name = plan_ref_match.group(1).strip()
+        ref_path = PLANS_DIR / subdir / Path(ref_name).name
+        if ref_path.exists():
+            ref_path.unlink()
+            log.info(f"[CLEANUP] Deleted referenced plan: {ref_path.name}")
+
+    # Delete original inbox file
+    orig_match = re.search(r"original_file:\s*(.+)", content)
+    if orig_match:
+        original_filename = orig_match.group(1).strip()
+        inbox_file = INBOX_DIR / subdir / original_filename
+        if inbox_file.exists():
+            inbox_file.unlink()
+            log.info(f"[CLEANUP] Deleted inbox file: {inbox_file.name}")
+        # Also check Archive
+        archive_file = INBOX_DIR / "Archive" / original_filename
+        if archive_file.exists():
+            archive_file.unlink()
+            log.info(f"[CLEANUP] Deleted archived inbox file: {archive_file.name}")
+
+
 def _append_dashboard(subdir: str, filename: str, action: str) -> None:
     ts    = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     entry = f"\n| {ts} | {subdir} | {filename} | {action} |\n"
@@ -161,9 +206,9 @@ def _process_pending() -> None:
                 lines.append(f"From:  {sender}")
             if subject:
                 lines.append(f"Subject:  {subject}")
-            lines += ["", "Move to Approved folder now?", "",
-                      "  Yes  →  move to Approved (will be processed automatically)",
-                      "  No   →  leave here (you can move it manually later)"]
+            lines += ["", "Approve this task?", "",
+                      "  Yes  →  Approve and process automatically",
+                      "  No   →  Reject and clean up all related files"]
 
             dialog_text  = "\n".join(lines)
             dialog_title = f"AI Employee — Approve {label} Task"
@@ -174,6 +219,8 @@ def _process_pending() -> None:
             if user_approved:
                 try:
                     approved_path.mkdir(parents=True, exist_ok=True)
+                    # Clean up related plan and inbox files
+                    _cleanup_related_files(subdir, task_file)
                     dest = approved_path / fname
                     shutil.move(str(task_file), str(dest))
                     state.setdefault("approved", []).append(fname)
@@ -185,9 +232,20 @@ def _process_pending() -> None:
                     # Don't add to seen — will retry next scan
                     continue
             else:
-                state.setdefault("skipped", []).append(fname)
-                log.info(f"Skipped by user: {fname} (stays in Pending_Approval/{subdir}/)")
-                _append_log(subdir, fname, "Skipped — stays in Pending_Approval (manual move available)")
+                try:
+                    # Rejected: clean up related files and move to Rejected/
+                    rejected_path = REJECTED_DIR / subdir
+                    rejected_path.mkdir(parents=True, exist_ok=True)
+                    _cleanup_related_files(subdir, task_file)
+                    dest = rejected_path / fname
+                    shutil.move(str(task_file), str(dest))
+                    state.setdefault("skipped", []).append(fname)
+                    log.info(f"Rejected and moved: {fname} → Rejected/{subdir}/")
+                    _append_log(subdir, fname, "Rejected → moved to Rejected/ and cleaned up related files")
+                    _append_dashboard(subdir, fname, "Rejected via dialog")
+                except Exception as e:
+                    log.error(f"Failed to reject {fname}: {e}")
+                    continue
 
             changed = True
 
