@@ -19,7 +19,7 @@ When a TASK file appears in the `Approved/` folder (moved there by the operator 
 Task file previously in `Pending_Approval/`, now in `Approved/`.
 
 Must have:
-- A corresponding `PLAN_<task_name>.md` already in `Plans/`
+- A corresponding `PLAN_<task_name>.md` already in `Plans/<type>/` (e.g., `Plans/email/`, `Plans/whatsapp/`, `Plans/linkedin/`)
 - `status: awaiting_approval` or `status: approved`
 - `plan_reference` pointing to the plan file
 
@@ -60,7 +60,7 @@ Do NOT simulate, describe, or explain actions — execute them.
 
 ### Step 2 — Verify Plan Exists (MANDATORY HARD GATE)
 
-Check: `Plans/PLAN_<task_name>.md`
+Check: `Plans/<type>/PLAN_<task_name>.md` (where `<type>` matches the task type: `email`, `whatsapp`, or `linkedin`)
 
 #### IF Plan does NOT exist:
 1. Write failure log:
@@ -125,7 +125,7 @@ Append to `Dashboard.md`:
 
 - Task approved and executed: <task_name>
 - Type: <task type>
-- Plan followed: PLAN_<task_name>.md
+- Plan followed: Plans/<type>/PLAN_<task_name>.md
 - Execution: <brief description of what was done>
 - Date: YYYY-MM-DD
 ```
@@ -152,7 +152,7 @@ Rules:
 ## <ISO timestamp> — <task_name> [EXECUTED]
 
 - Task: <task_filename>
-- Plan Reference: PLAN_<task_name>.md
+- Plan Reference: Plans/<type>/PLAN_<task_name>.md
 - Approval: confirmed by operator
 - Actions Performed:
   - <List each specific action taken>

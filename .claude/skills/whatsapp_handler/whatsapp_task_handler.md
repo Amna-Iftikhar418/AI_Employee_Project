@@ -55,7 +55,7 @@ Each WhatsApp message file should contain:
 ---
 
 ### Step 3 — Create Plan (MANDATORY)
-- File: `Plans/PLAN_<task_name>.md`
+- File: `Plans/whatsapp/PLAN_<task_name>.md`
 - If exists → DO NOT overwrite
 - Format:
 ```yaml
@@ -66,7 +66,7 @@ sender: <sender>
 message: "<message_text>"
 keywords: [<keywords_detected>]
 priority: <priority>
-original_file: Inbox/<task_filename>
+original_file: Inbox/whatsapp/<task_filename>
 created: <ISO timestamp>
 status: pending
 ---
@@ -88,5 +88,61 @@ A precise, actionable goal derived from WhatsApp message content.
 ## Compliance Notes
 Follow Company_Handbook.md
 
+## Proposed Response
+<Write the full response or action to take when this task is approved.
+This section is required — process_approved_executor reads it at execution time.>
+
 ## Status
 pending
+```
+
+---
+
+### Step 4 — Sensitive Task Check
+Scan the message for sensitive content before routing:
+- **Sensitive keywords**: `["password", "account", "bank", "transfer", "login", "secret", "confidential"]`
+- If sensitive keyword found → add `sensitive: true` to Plan frontmatter and flag for manual review in the Purpose section.
+- If NOT sensitive → continue to Step 5.
+
+---
+
+### Step 5 — Move to Pending Approval
+- Create a `TASK_<task_name>.md` file in `Needs_Action/whatsapp/` if not already present.
+- Move or copy the Plan to `Pending_Approval/whatsapp/TASK_<task_name>.md` so the approval watcher can surface it to the human reviewer.
+- The `pending_approval_watcher.py` will show a dialog; human clicks Yes → file moves to `Approved/whatsapp/`.
+
+---
+
+### Step 6 — Dashboard Update
+Append to `vault/AI_Employee_Vault/Dashboard.md` (NEVER overwrite):
+```
+## Recent Activity
+
+- WhatsApp task received: <task_name>
+- From: <sender>
+- Priority: <priority>
+- Status: pending_approval
+- Date: <ISO timestamp>
+```
+
+---
+
+### Step 7 — Log Entry
+Append to `vault/AI_Employee_Vault/Logs/log_<YYYY-MM-DD>.md` (NEVER overwrite):
+```
+## <ISO timestamp> — <task_name> [WHATSAPP TASK CREATED]
+
+- Task: TASK_<task_name>.md
+- Status: pending_approval
+- Actions Performed:
+  - Inbox file read: <original_filename>
+  - Plan created: Plans/whatsapp/PLAN_<task_name>.md
+  - Routed to: Pending_Approval/whatsapp/
+```
+
+---
+
+### Step 8 — Completion
+- Confirm `Plans/whatsapp/PLAN_<task_name>.md` exists with a `## Proposed Response` section.
+- Confirm task file is in `Pending_Approval/whatsapp/`.
+- Report back: task name, plan path, and pending approval status.

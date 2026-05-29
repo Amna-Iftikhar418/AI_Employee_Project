@@ -4,35 +4,21 @@
     "type": "split",
     "children": [
       {
-        "id": "28407427029ca047",
+        "id": "ed876c015fdf4b00",
         "type": "tabs",
-        "dimension": 30.11744966442953,
         "children": [
           {
-            "id": "7b013be7a95f2f6e",
+            "id": "8db5c12f4a984fd3",
             "type": "leaf",
             "state": {
-              "type": "empty",
-              "state": {},
+              "type": "markdown",
+              "state": {
+                "file": "Logs/log_2026-04-16.md",
+                "mode": "source",
+                "source": false
+              },
               "icon": "lucide-file",
-              "title": "New tab"
-            }
-          }
-        ]
-      },
-      {
-        "id": "56e8236c4854ba08",
-        "type": "tabs",
-        "dimension": 69.88255033557047,
-        "children": [
-          {
-            "id": "07be529e6a94801d",
-            "type": "leaf",
-            "state": {
-              "type": "graph",
-              "state": {},
-              "icon": "lucide-git-fork",
-              "title": "Graph view"
+              "title": "log_2026-04-16"
             }
           }
         ]
@@ -196,6 +182,10 @@
   },
   "active": "546868168350b687",
   "lastOpenFiles": [
+    "Logs/log_2026-03-25.md",
+    "Logs/log_2026-03-24.md",
+    "Briefings/2026-03-23_Monday_Briefing.md",
+    "Rejected/email/TASK_email_Team_Snapchat_20260416_082029_835759.txt.md",
     "Done/email/TASK_email_Amna_Iftikhar_20260325_165529_682896.txt.md",
     "Approved/email/TASK_email_Amna_Iftikhar_20260325_165529_682896.txt.md.lock",
     "Inbox/Archive/email_Amna_Iftikhar_20260325_165529_682896.txt",
@@ -225,11 +215,7 @@
     "Approved/email/TASK_email_Amna_Iftikhar_20260325_165458_872586.txt.md",
     "Pending_Approval/email/TASK_email_Amna_Iftikhar_20260325_165458_872586.txt.md",
     "Plans/email/PLAN_email_Amna_Iftikhar_20260325_165458_872586.txt.md",
-    "Needs_Action/email/TASK_email_Amna_Iftikhar_20260325_165458_872586.txt.md",
     "Inbox/email/email_Amna_Iftikhar_20260325_165458_872586.txt",
-    "Done/whatsapp/TASK_whatsapp_Amna_09_18AM.md",
-    "Done/whatsapp/TASK_whatsapp_Amna_04_06PM_2.txt.md",
-    "Done/whatsapp/TASK_whatsapp_Amna_04_06PM_1.txt.md",
     "Approved/email/TASK_email_Amna_Iftikhar_20260325_095124_538518.txt.md.lock",
     "Inbox/whatsapp/whatsapp_Amna_04_06PM_2.txt"
   ]

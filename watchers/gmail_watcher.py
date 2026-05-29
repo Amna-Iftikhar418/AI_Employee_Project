@@ -34,7 +34,7 @@ from googleapiclient.errors import HttpError
 # FIX: Replaced bare basicConfig with RotatingFileHandler
 # ------------------------------------------------------------------
 _file_handler = logging.handlers.RotatingFileHandler(
-    "gmail_watcher.log",
+    str(Path(__file__).parent.parent / "gmail_watcher.log"),
     maxBytes=5 * 1024 * 1024,  # 5 MB per file
     backupCount=3,              # keep 3 rotated backups
 )

@@ -91,7 +91,7 @@ Glob: vault/AI_Employee_Vault/Approved/linkedin/LINKEDIN_POST_*.md
 *(Only reached if Step 1 found nothing in Approved/)*
 
 ```
-Glob: vault/AI_Employee_Vault/Pending_Approval/LINKEDIN_POST_*.md
+Glob: vault/AI_Employee_Vault/Pending_Approval/linkedin/LINKEDIN_POST_*.md
 ```
 
 **If files found:**

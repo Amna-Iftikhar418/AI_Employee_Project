@@ -18,7 +18,7 @@ from vault_utils import append_log, append_dashboard
 # Structured rotating logger
 # ------------------------------------------------------------------
 _file_handler = logging.handlers.RotatingFileHandler(
-    "task_processor.log",
+    str(Path(__file__).parent.parent / "task_processor.log"),
     maxBytes=5 * 1024 * 1024,
     backupCount=3,
 )
@@ -46,7 +46,7 @@ class TaskProcessor:
 
         self.require_approval_for_all = True
 
-        # Type-specific subdirs
+        # Type-specific subdirs — email and whatsapp (existing)
         self.email_needs_action    = self.needs_action_dir / "email"
         self.whatsapp_needs_action = self.needs_action_dir / "whatsapp"
         self.email_plans           = self.plans_dir / "email"
@@ -60,25 +60,53 @@ class TaskProcessor:
         self.email_done            = self.done_dir / "email"
         self.whatsapp_done         = self.done_dir / "whatsapp"
 
+        # Odoo domain (TASK-2)
+        self.odoo_needs_action = self.needs_action_dir / "odoo"
+        self.odoo_plans        = self.plans_dir / "odoo"
+        self.odoo_pending      = self.pending_approval_dir / "odoo"
+        self.odoo_approved     = self.approved_dir / "odoo"
+        self.odoo_rejected     = self.rejected_dir / "odoo"
+        self.odoo_done         = self.done_dir / "odoo"
+
+        # Social domain — Facebook & Instagram (TASK-3)
+        self.social_needs_action = self.needs_action_dir / "social"
+        self.social_plans        = self.plans_dir / "social"
+        self.social_pending      = self.pending_approval_dir / "social"
+        self.social_approved     = self.approved_dir / "social"
+        self.social_rejected     = self.rejected_dir / "social"
+        self.social_done         = self.done_dir / "social"
+
         for folder in [
             self.needs_action_dir,
             self.email_needs_action,
             self.whatsapp_needs_action,
+            self.odoo_needs_action,
+            self.social_needs_action,
             self.plans_dir,
             self.email_plans,
             self.whatsapp_plans,
+            self.odoo_plans,
+            self.social_plans,
             self.pending_approval_dir,
             self.email_pending,
             self.whatsapp_pending,
+            self.odoo_pending,
+            self.social_pending,
             self.approved_dir,
             self.email_approved,
             self.whatsapp_approved,
+            self.odoo_approved,
+            self.social_approved,
             self.rejected_dir,
             self.email_rejected,
             self.whatsapp_rejected,
+            self.odoo_rejected,
+            self.social_rejected,
             self.done_dir,
             self.email_done,
             self.whatsapp_done,
+            self.odoo_done,
+            self.social_done,
             self.logs_dir,
             self.inbox_dir,
         ]:
@@ -95,14 +123,24 @@ class TaskProcessor:
         for path in [
             self.email_needs_action,
             self.whatsapp_needs_action,
+            self.odoo_needs_action,
+            self.social_needs_action,
             self.email_plans,
             self.whatsapp_plans,
+            self.odoo_plans,
+            self.social_plans,
             self.email_pending,
             self.whatsapp_pending,
+            self.odoo_pending,
+            self.social_pending,
             self.email_approved,
             self.whatsapp_approved,
+            self.odoo_approved,
+            self.social_approved,
             self.email_done,
             self.whatsapp_done,
+            self.odoo_done,
+            self.social_done,
             self.logs_dir,
         ]:
             test = path / ".write_test"
@@ -146,9 +184,10 @@ class TaskProcessor:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         append_dashboard(self.dashboard_file, f"- [{status}] {task_name} - {timestamp}")
 
-    def write_log(self, task_name, action, details=""):
+    def write_log(self, task_name, action, details="", domain=""):
         timestamp = datetime.now().strftime("%H:%M:%S")
-        append_log(self.logs_dir, f"[{timestamp}] {action}: {task_name} - {details}")
+        domain_tag = f"[{domain}] " if domain else ""
+        append_log(self.logs_dir, f"[{timestamp}] {domain_tag}{action}: {task_name} - {details}")
 
     def run_claude_skill(self, skill_name: str, file_path: Path):
         """Invoke a Claude skill headlessly via the CLI."""
@@ -812,13 +851,31 @@ pending
 
         while True:
             try:
-                for file in list(self.email_needs_action.glob("TASK_*.md")) + list(self.whatsapp_needs_action.glob("TASK_*.md")):
+                needs_action_files = (
+                    list(self.email_needs_action.glob("TASK_*.md"))
+                    + list(self.whatsapp_needs_action.glob("TASK_*.md"))
+                    + list(self.odoo_needs_action.glob("TASK_*.md"))
+                    + list(self.social_needs_action.glob("TASK_*.md"))
+                )
+                for file in needs_action_files:
                     self.process_task_file(file)
 
-                for file in list(self.email_approved.glob("TASK_*.md")) + list(self.whatsapp_approved.glob("TASK_*.md")):
+                approved_files = (
+                    list(self.email_approved.glob("TASK_*.md"))
+                    + list(self.whatsapp_approved.glob("TASK_*.md"))
+                    + list(self.odoo_approved.glob("TASK_*.md"))
+                    + list(self.social_approved.glob("TASK_*.md"))
+                )
+                for file in approved_files:
                     self.process_approved_task(file)
 
-                for file in list(self.email_rejected.glob("TASK_*.md")) + list(self.whatsapp_rejected.glob("TASK_*.md")):
+                rejected_files = (
+                    list(self.email_rejected.glob("TASK_*.md"))
+                    + list(self.whatsapp_rejected.glob("TASK_*.md"))
+                    + list(self.odoo_rejected.glob("TASK_*.md"))
+                    + list(self.social_rejected.glob("TASK_*.md"))
+                )
+                for file in rejected_files:
                     self.process_rejected_task(file)
 
                 # Run cleanup every 5 iterations

@@ -11,7 +11,7 @@ Execute the final email-send step for approved email tasks.
 
 Reads an approved `email_task` file from `Approved/`, extracts the proposed reply
 from the corresponding `PLAN_*.md` file, calls the MCP email server at
-`http://localhost:8000/send-email`, logs the result, and moves the task to `Done/`.
+`http://localhost:8001/send-email`, logs the result, and moves the task to `Done/`.
 
 This skill is the **action layer** — it runs AFTER human approval and AFTER
 the plan with a proposed response already exists.
@@ -175,7 +175,7 @@ This lets you validate the full pipeline safely before enabling real sending.
 
 ## MCP Server Reference
 
-**Endpoint:** `POST http://localhost:8000/send-email`
+**Endpoint:** `POST http://localhost:8001/send-email`
 
 **Headers:**
 ```
@@ -204,24 +204,24 @@ Content-Type: application/json
 ```bash
 uv run mcp_server.py
 # or
-uvicorn mcp_server:app --port 8000
+uvicorn mcp_server:app --port 8001
 ```
 
 ---
 
 ## Executor Script
 
-The actual logic lives in `skills/send_email_executor.py`.
+The actual logic lives in `.claude/commands/send_email_executor.py`.
 
 ```bash
 # Normal run
-python skills/send_email_executor.py TASK_email_john_doe.txt.md
+python .claude/commands/send_email_executor.py TASK_email_john_doe.txt.md
 
 # Dry run
-DRY_RUN=true python skills/send_email_executor.py TASK_email_john_doe.txt.md
+DRY_RUN=true python .claude/commands/send_email_executor.py TASK_email_john_doe.txt.md
 
 # Custom MCP server URL
-MCP_SERVER_URL=http://192.168.1.10:8000 python skills/send_email_executor.py TASK_email_john.txt.md
+MCP_SERVER_URL=http://192.168.1.10:8001 python .claude/commands/send_email_executor.py TASK_email_john.txt.md
 ```
 
 The executor outputs a JSON result to stdout:

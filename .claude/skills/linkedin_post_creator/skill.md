@@ -26,7 +26,6 @@ When the operator requests a LinkedIn post creation, OR when the daily scheduler
 
 ## GLOBAL CONSTRAINTS
 
-- NEVER post to LinkedIn directly — this skill only creates files
 - NEVER skip Plan creation — Plan MUST exist before post file is written
 - NEVER overwrite existing files — if file exists, STOP with error
 - ALWAYS write `## Proposed Response` in Plan file (system-wide hard requirement)
@@ -326,12 +325,16 @@ Can I post it?
 1. Move the post file from `Pending_Approval/linkedin/` to `Approved/linkedin/`:
    - Source: `vault/AI_Employee_Vault/Pending_Approval/linkedin/LINKEDIN_POST_<timestamp>.md`
    - Destination: `vault/AI_Employee_Vault/Approved/linkedin/LINKEDIN_POST_<timestamp>.md`
-   - Use Bash `mv` command (or copy+delete on Windows)
-2. Confirm to operator:
-   ```
-   Moved to Approved/linkedin/ — the watcher will now publish it automatically.
-   ```
-3. The `approved_watcher.py` running in the background will detect the file and call `linkedin_executor.run_linkedin_post()` to publish it. No further action needed.
+   - Use PowerShell `Move-Item` on Windows
+2. Immediately invoke the `linkedin_publisher` skill to publish via Playwright MCP.
+   The skill will:
+   - Navigate to linkedin.com using `mcp__playwright__browser_navigate`
+   - Verify session is active (logged in)
+   - Open post composer and type the post content
+   - Submit the post and confirm success
+   - Update file metadata, write log entry, update Dashboard
+   - Move file from `Approved/linkedin/` to `Done/linkedin/`
+3. Do NOT wait for `approved_watcher.py` — publishing happens immediately in this session.
 
 **If operator says NO (any of: no, n, reject, cancel, don't post):**
 1. Move the post file to `Rejected/linkedin/` (create folder if needed):
@@ -395,7 +398,7 @@ If any step fails:
 7. Update Dashboard (append)
 8. Write log entry (append)
 9. Show post to operator and ask "Can I post it?" ← NO confirmation before this point
-10. On operator YES → move file to Approved/linkedin/ (approved_watcher handles publishing)
+10. On operator YES → move file to Approved/linkedin/ → immediately invoke linkedin_publisher skill (Playwright MCP)
 11. On operator NO → move file to Rejected/linkedin/
 
 Do NOT interrupt or ask for confirmation during steps 1–8.

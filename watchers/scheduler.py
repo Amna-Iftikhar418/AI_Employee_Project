@@ -33,15 +33,11 @@ def run_linkedin_post():
     logger.info("Running daily LinkedIn post generation via linkedin_post_creator skill...")
     try:
         result = subprocess.run(
-            [
-                "claude", "-p",
-                "The daily scheduler has triggered. Run the linkedin_post_creator skill to auto-select a topic and create today's LinkedIn post.",
-                "--allowedTools", "all",
-            ],
+            'claude -p "The daily scheduler has triggered. Run the linkedin_post_creator skill to auto-select a topic and create today\'s LinkedIn post." --allowedTools all',
             cwd=str(ROOT),
             capture_output=False,
             timeout=300,
-            shell=False,
+            shell=True,
         )
         if result.returncode == 0:
             logger.info("linkedin_post_creator skill completed.")

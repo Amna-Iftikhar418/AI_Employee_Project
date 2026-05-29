@@ -233,7 +233,12 @@ async def send_email(
         )
 
     except Exception as e:
-        logger.error(f"Failed to send email: {e}")
+        # Invalidate the cached service so the next request rebuilds a fresh one.
+        # Token-refresh errors are handled inside get_gmail_service(); any other
+        # exception here means the cached service object may be broken.
+        global _gmail_service
+        _gmail_service = None
+        logger.error(f"Failed to send email (service cache cleared): {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to send email: {str(e)}",

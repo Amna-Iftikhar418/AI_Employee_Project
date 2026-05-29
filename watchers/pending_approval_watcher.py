@@ -219,8 +219,8 @@ def _process_pending() -> None:
             if user_approved:
                 try:
                     approved_path.mkdir(parents=True, exist_ok=True)
-                    # Clean up related plan and inbox files
-                    _cleanup_related_files(subdir, task_file)
+                    # Do NOT clean up the plan here — send_email_executor / process_approved_executor
+                    # needs it after the file lands in Approved/. Cleanup happens post-execution.
                     dest = approved_path / fname
                     shutil.move(str(task_file), str(dest))
                     state.setdefault("approved", []).append(fname)

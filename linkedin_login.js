@@ -14,7 +14,7 @@ const path = require('path');
 const os   = require('os');
 const readline = require('readline');
 
-const PROFILE_DIR = path.join(os.homedir(), '.linkedin-executor-profile');
+const PROFILE_DIR = path.join(os.homedir(), '.linkedin-profile');
 
 async function main() {
     console.log('');

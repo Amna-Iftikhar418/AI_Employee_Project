@@ -1,17 +1,14 @@
 """
 approved_watcher.py
-Monitors vault/AI_Employee_Vault/Approved/ for task files and executes them.
+Monitors vault/AI_Employee_Vault/Approved/linkedin/ for LinkedIn post files and publishes them.
 
 For LinkedIn posts:
 - Detects LINKEDIN_POST_*.md files in Approved/linkedin/
 - Calls linkedin_executor.run_linkedin_post() directly (Python)
 - Auto-publishes, updates logs, moves to Done/
 
-For email tasks:
-- Calls send_email_executor.py directly (Python, no Claude spawn)
-
-For WhatsApp / general tasks:
-- Calls process_approved_executor.py directly (Python, no Claude spawn)
+Email and WhatsApp tasks are handled exclusively by task_processor.py.
+This watcher only processes LinkedIn posts.
 
 Run with:
     uv run watchers/approved_watcher.py
@@ -26,6 +23,7 @@ import urllib.error
 from pathlib import Path
 
 RETRY_COOLDOWN = 600  # seconds before re-attempting a failed file (10 min)
+MAX_RETRIES = 5       # maximum total attempts before a file is fatally rejected
 
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
@@ -117,10 +115,12 @@ def run_linkedin_file(file_path: Path) -> None:
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
-APPROVED_ROOT   = ROOT / "vault" / "AI_Employee_Vault" / "Approved"
+APPROVED_ROOT     = ROOT / "vault" / "AI_Employee_Vault" / "Approved"
 APPROVED_LINKEDIN = APPROVED_ROOT / "linkedin"
-PROCESSED_FILE  = APPROVED_ROOT / ".processed_approved.json"
-CHECK_INTERVAL  = 5  # seconds between scans
+APPROVED_ODOO     = APPROVED_ROOT / "odoo"
+APPROVED_SOCIAL   = APPROVED_ROOT / "social"
+PROCESSED_FILE    = APPROVED_ROOT / ".processed_approved.json"
+CHECK_INTERVAL    = 5  # seconds between scans
 
 
 # ── Processed-set helpers ─────────────────────────────────────────────────────
@@ -168,6 +168,14 @@ def _get_file_type(file_path: Path) -> str:
     if name.startswith("task_whatsapp_") or "whatsapp" in name:
         return "whatsapp"
 
+    # Odoo tasks
+    if name.startswith("task_odoo_"):
+        return "odoo"
+
+    # Social posts (Facebook/Instagram)
+    if name.startswith("social_post_"):
+        return "social"
+
     # Check frontmatter
     try:
         text = file_path.read_text(encoding="utf-8")
@@ -181,6 +189,10 @@ def _get_file_type(file_path: Path) -> str:
                     return "email"
                 if "type: whatsapp_task" in frontmatter:
                     return "whatsapp"
+                if "type: odoo_task" in frontmatter:
+                    return "odoo"
+                if "type: social_post" in frontmatter:
+                    return "social"
     except Exception:
         pass
 
@@ -200,6 +212,8 @@ def watch():
     # Ensure directories exist
     APPROVED_ROOT.mkdir(parents=True, exist_ok=True)
     APPROVED_LINKEDIN.mkdir(parents=True, exist_ok=True)
+    APPROVED_ODOO.mkdir(parents=True, exist_ok=True)
+    APPROVED_SOCIAL.mkdir(parents=True, exist_ok=True)
 
     # Files successfully processed in previous runs (persisted to disk)
     persisted = _load_processed()
@@ -207,6 +221,9 @@ def watch():
     # Files attempted in THIS run: name -> timestamp of last attempt
     # After RETRY_COOLDOWN seconds, a failed file is re-attempted automatically
     attempted_this_run: dict = {}
+
+    # Total retry counts: name -> int. Persists across cooldown cycles.
+    retry_counts: dict = {}
 
     while True:
         try:
@@ -216,6 +233,14 @@ def watch():
             # LinkedIn files (highest priority - direct Python execution)
             if APPROVED_LINKEDIN.exists():
                 all_files.extend(sorted(APPROVED_LINKEDIN.glob("LINKEDIN_POST_*.md")))
+
+            # Odoo tasks — handled by odoo_handler skill (TASK-2); collected here for routing
+            if APPROVED_ODOO.exists():
+                all_files.extend(sorted(APPROVED_ODOO.glob("TASK_odoo_*.md")))
+
+            # Social tasks — handled by facebook_instagram_poster skill (TASK-3); collected here for routing
+            if APPROVED_SOCIAL.exists():
+                all_files.extend(sorted(APPROVED_SOCIAL.glob("SOCIAL_POST_*.md")))
 
             # Email and WhatsApp tasks are handled exclusively by task_processor.py
             # to avoid race conditions and FileLock conflicts.
@@ -239,6 +264,22 @@ def watch():
                         continue
                     print(f"[RETRY] Cooldown expired ({elapsed:.0f}s) — retrying: {name}")
 
+                # Circuit-breaker: give up after MAX_RETRIES total attempts
+                if retry_counts.get(name, 0) >= MAX_RETRIES:
+                    print(f"[FATAL] {name} has failed {MAX_RETRIES} times — moving to Rejected/")
+                    subdir = file_path.parent.name
+                    rejected_dir = ROOT / "vault" / "AI_Employee_Vault" / "Rejected" / subdir
+                    rejected_dir.mkdir(parents=True, exist_ok=True)
+                    dest = rejected_dir / name
+                    try:
+                        file_path.replace(dest)
+                        print(f"[FATAL] Moved to: {dest}")
+                    except Exception as move_err:
+                        print(f"[FATAL] Could not move file: {move_err}")
+                    persisted.add(name)
+                    _save_processed(persisted)
+                    continue
+
                 # Skip files that are already marked completed
                 if _is_completed(file_path):
                     print(f"[SKIP] Already completed: {name}")
@@ -248,8 +289,11 @@ def watch():
 
                 print(f"\n[AUTO] -- New file ------------------------------")
                 attempted_this_run[name] = time.time()
+                retry_counts[name] = retry_counts.get(name, 0) + 1
 
-                # Determine file type and route accordingly
+                # Only LinkedIn files reach this point — all_files is built exclusively
+                # from APPROVED_LINKEDIN.glob("LINKEDIN_POST_*.md").
+                # Email and WhatsApp tasks are handled by task_processor.py.
                 file_type = _get_file_type(file_path)
                 print(f"[WATCHER] File type detected: {file_type}")
 
@@ -257,16 +301,6 @@ def watch():
                     if file_type == "linkedin":
                         # LinkedIn: Use direct Python executor (no Claude spawn)
                         run_linkedin_file(file_path)
-                    elif file_type == "email":
-                        # Email: Use direct Python executor (no Claude spawn)
-                        run_send_email_executor(file_path)
-                    elif file_type == "whatsapp":
-                        # WhatsApp: Use direct Python executor (no Claude spawn)
-                        run_process_approved_executor(file_path)
-                    else:
-                        # Unknown: Use direct Python executor (no Claude spawn)
-                        print(f"[WARN] Unknown file type, trying process_approved_executor: {name}")
-                        run_process_approved_executor(file_path)
 
                 except Exception as e:
                     print(f"[ERROR] Unhandled exception for {name}: {e}")

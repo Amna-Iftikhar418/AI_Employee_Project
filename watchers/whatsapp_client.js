@@ -7,7 +7,9 @@
 
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
+const qrcodeImage = require('qrcode');
 const path = require('path');
+const fs = require('fs');
 
 const AUTH_DIR = path.join(__dirname, '..', '.wwebjs_auth');
 
@@ -42,6 +44,18 @@ function createClient() {
         qrcode.generate(qr, { small: true }, (qrString) => {
             process.stderr.write(qrString + '\n');
         });
+
+        // Save QR as PNG image so it can be opened and scanned easily
+        const qrImagePath = path.join(__dirname, '..', 'whatsapp_qr.png');
+        qrcodeImage.toFile(qrImagePath, qr, { width: 400 }, (err) => {
+            if (err) {
+                process.stderr.write(`[whatsapp_client] Could not save QR image: ${err.message}\n`);
+            } else {
+                process.stderr.write(`\n[whatsapp_client] QR code saved as IMAGE → open this file and scan it:\n`);
+                process.stderr.write(`  ${qrImagePath}\n\n`);
+            }
+        });
+
         process.stderr.write('\n[whatsapp_client] Waiting for scan...\n');
     });
 

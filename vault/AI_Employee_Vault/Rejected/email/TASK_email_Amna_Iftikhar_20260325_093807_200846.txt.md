@@ -4,7 +4,7 @@ source: gmail
 original_file: email_Amna_Iftikhar_20260325_093807_200846.txt
 created: 2026-03-25T09:38:07.249333
 priority: normal
-status: awaiting_approval
+status: rejected
 reason: email_reply_requires_approval
 detected_keywords: []
 plan_reference: PLAN_email_Amna_Iftikhar_20260325_093807_200846.txt.md
