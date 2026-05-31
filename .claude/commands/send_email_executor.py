@@ -34,8 +34,11 @@ import requests
 from dotenv import load_dotenv
 from filelock import FileLock
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+_PROJECT_ROOT = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(_PROJECT_ROOT))
+sys.path.insert(0, str(_PROJECT_ROOT / "watchers"))  # TASK-8.4: audit_logger
 from vault_utils import parse_frontmatter
+from audit_logger import log_action  # noqa: E402  TASK-8.4
 
 # ── Environment ──────────────────────────────────────────────────────────────
 load_dotenv()
@@ -390,6 +393,15 @@ def run(task_path_str: str) -> int:
                 f"Dry run: {is_dry}",
             ],
             status="completed",
+        )
+        log_action(  # TASK-8.4
+            action_type="email_sent",
+            actor="send_email_executor",
+            target=plan["to"],
+            parameters={"subject": plan["subject"], "task": task_filename, "dry_run": is_dry},
+            approval_status="approved",
+            approved_by="human",
+            result="success" + (" [dry_run]" if is_dry else ""),
         )
 
         # ── Step 6: Update dashboard ──────────────────────────────────────────

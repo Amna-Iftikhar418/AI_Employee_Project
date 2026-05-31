@@ -1,0 +1,10 @@
+pyproject.toml
+src/browser_mcp/__init__.py
+src/browser_mcp/__main__.py
+src/browser_mcp/server.py
+src/browser_mcp.egg-info/PKG-INFO
+src/browser_mcp.egg-info/SOURCES.txt
+src/browser_mcp.egg-info/dependency_links.txt
+src/browser_mcp.egg-info/entry_points.txt
+src/browser_mcp.egg-info/requires.txt
+src/browser_mcp.egg-info/top_level.txt

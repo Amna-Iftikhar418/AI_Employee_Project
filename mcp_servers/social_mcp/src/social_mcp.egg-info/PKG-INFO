@@ -1,0 +1,79 @@
+Metadata-Version: 2.4
+Name: social-mcp
+Version: 1.0.0
+Summary: MCP Server for Facebook and Instagram posting via Meta Graph API
+License: MIT
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: fastmcp>=2.12.0
+Requires-Dist: requests>=2.31.0
+Requires-Dist: python-dotenv>=1.0.0
+
+# Social MCP Server
+
+MCP server for posting to Facebook Pages and Instagram via Meta Graph API.
+
+## Tools
+
+| Tool | Description |
+|------|-------------|
+| `post_to_facebook_page` | Post text/link/image to Facebook Page feed |
+| `post_to_instagram` | Post image + caption to Instagram (2-step container API) |
+| `get_facebook_page_info` | Read Page name, fans, followers |
+| `get_instagram_account_info` | Read IG username, followers, media count |
+
+## Setup
+
+### 1. Facebook Developer Setup (one-time)
+
+1. Go to [developers.facebook.com](https://developers.facebook.com) → Create App → Business type
+2. Add **Facebook Login** product to your app
+3. Under App Permissions, add:
+   - `pages_manage_posts`
+   - `pages_read_engagement`
+   - `instagram_basic`
+   - `instagram_content_publish`
+4. Connect your Instagram Business/Creator account to your Facebook Page:
+   - Facebook Page Settings → Instagram → Connect Account
+5. Generate a **long-lived Page Access Token**:
+   - Graph API Explorer → select your app → select your page → generate token
+   - Exchange for long-lived: `GET /oauth/access_token?grant_type=fb_exchange_token&...`
+
+### 2. Get Your IDs
+
+```bash
+# Get Page ID
+GET https://graph.facebook.com/v21.0/me/accounts?access_token={USER_TOKEN}
+
+# Get Instagram Business User ID
+GET https://graph.facebook.com/v21.0/{page-id}?fields=instagram_business_account&access_token={PAGE_TOKEN}
+```
+
+### 3. Environment Variables
+
+Add to your `.env` file:
+
+```
+META_PAGE_ACCESS_TOKEN=your_long_lived_page_access_token
+META_PAGE_ID=your_numeric_page_id
+META_IG_USER_ID=your_instagram_business_user_id
+META_GRAPH_API_VERSION=v21.0
+```
+
+## Running
+
+```bash
+# Start via uv (registered in .mcp.json)
+uv --directory mcp_servers/social_mcp run social-mcp
+
+# Install dependencies first
+cd mcp_servers/social_mcp
+uv pip install -e .
+```
+
+## Instagram Limitations
+
+- Instagram does **not** support text-only posts via the Graph API
+- Posts require a publicly accessible `image_url` (HTTPS)
+- Caption max: 2200 characters
+- Reels/video: not implemented in this version

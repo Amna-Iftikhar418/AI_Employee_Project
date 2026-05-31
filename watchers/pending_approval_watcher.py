@@ -17,11 +17,18 @@ import json
 import logging
 import re
 import shutil
+import sys
 import time
+import yaml
 from datetime import datetime
 from pathlib import Path
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
+
+_WATCHERS_DIR = Path(__file__).parent
+if str(_WATCHERS_DIR) not in sys.path:
+    sys.path.insert(0, str(_WATCHERS_DIR))
+from audit_logger import log_action  # noqa: E402  TASK-8.4
 
 VAULT       = Path(__file__).parent.parent / "vault" / "AI_Employee_Vault"
 PENDING_DIR = VAULT / "Pending_Approval"
@@ -33,7 +40,7 @@ STATE_FILE  = PENDING_DIR / ".processed_pending_review.json"
 REJECTED_DIR = VAULT / "Rejected"
 PLANS_DIR    = VAULT / "Plans"
 INBOX_DIR    = VAULT / "Inbox"
-SUBDIRS        = ["email", "whatsapp"]   # linkedin handled separately
+SUBDIRS        = ["email", "whatsapp", "odoo", "social"]   # linkedin handled separately
 CHECK_INTERVAL = 10                      # seconds between scans
 
 # ── Logging ───────────────────────────────────────────────────────────────────
@@ -87,20 +94,18 @@ def _ask_user(title: str, message: str) -> bool:
 
 def _read_frontmatter(path: Path) -> dict:
     """Return key-value pairs from the YAML front-matter block."""
-    meta: dict = {}
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-        if not lines or lines[0].strip() != "---":
-            return meta
-        for line in lines[1:]:
-            if line.strip() == "---":
-                break
-            if ":" in line:
-                k, _, v = line.partition(":")
-                meta[k.strip()] = v.strip()
+        text = path.read_text(encoding="utf-8")
+        if not text.startswith("---"):
+            return {}
+        end = text.find("\n---", 3)
+        if end == -1:
+            return {}
+        fm_text = text[3:end].strip()
+        parsed = yaml.safe_load(fm_text)
+        return parsed if isinstance(parsed, dict) else {}
     except Exception:
-        pass
-    return meta
+        return {}
 
 
 def _append_log(subdir: str, filename: str, action: str) -> None:
@@ -182,7 +187,13 @@ def _process_pending() -> None:
         if not pending_path.exists():
             continue
 
-        for task_file in sorted(pending_path.glob("TASK_*.md")):
+        # Collect both TASK_*.md and SOCIAL_POST_*.md (social subdir uses different naming)
+        candidates = list(pending_path.glob("TASK_*.md"))
+        if subdir == "social":
+            candidates.extend(pending_path.glob("SOCIAL_POST_*.md"))
+        candidates.sort(key=lambda p: p.name)
+
+        for task_file in candidates:
             fname = task_file.name
 
             # Already answered once — skip
@@ -199,19 +210,54 @@ def _process_pending() -> None:
             subject = meta.get("subject", "")
 
             # Build dialog text
-            label = "EMAIL" if subdir == "email" else "WHATSAPP"
-            lines = [f"New {label} task is waiting for approval.", ""]
-            lines.append(f"File:  {fname}")
-            if sender:
-                lines.append(f"From:  {sender}")
-            if subject:
-                lines.append(f"Subject:  {subject}")
+            if subdir == "odoo":
+                label = "ODOO"
+                action  = meta.get("action", "")
+                partner = meta.get("partner_name", "")
+                amount  = meta.get("amount", "")
+                product = meta.get("product", "")
+                lines = ["New ODOO task is waiting for approval.", ""]
+                lines.append(f"File:    {fname}")
+                if action:
+                    lines.append(f"Action:  {action}")
+                if partner:
+                    lines.append(f"Customer:{partner}")
+                if product:
+                    lines.append(f"Product: {product}")
+                if amount:
+                    lines.append(f"Amount:  ${amount}")
+            elif subdir == "social":
+                label     = "SOCIAL POST"
+                platforms = meta.get("platforms", meta.get("platform", "facebook"))
+                topic     = meta.get("topic", meta.get("subject", ""))
+                message   = meta.get("message", "")
+                image_url = meta.get("image_url", "")
+                lines = ["New SOCIAL POST is waiting for approval.", ""]
+                lines.append(f"File:      {fname}")
+                lines.append(f"Platforms: {platforms}")
+                if topic:
+                    lines.append(f"Topic:     {topic}")
+                if message:
+                    preview = message[:120] + "..." if len(message) > 120 else message
+                    lines.append(f"Preview:   {preview}")
+                if image_url:
+                    lines.append(f"Image:     {image_url}")
+            else:
+                label = "EMAIL" if subdir == "email" else "WHATSAPP"
+                lines = [f"New {label} task is waiting for approval.", ""]
+                lines.append(f"File:  {fname}")
+                if sender:
+                    lines.append(f"From:  {sender}")
+                if subject:
+                    lines.append(f"Subject:  {subject}")
+
             lines += ["", "Approve this task?", "",
                       "  Yes  →  Approve and process automatically",
                       "  No   →  Reject and clean up all related files"]
 
             dialog_text  = "\n".join(lines)
-            dialog_title = f"AI Employee — Approve {label} Task"
+            noun = "Post" if subdir == "social" else "Task"
+            dialog_title = f"AI Employee — Approve {label} {noun}"
 
             log.info(f"Prompting user for: {fname}")
             user_approved = _ask_user(dialog_title, dialog_text)
@@ -227,6 +273,15 @@ def _process_pending() -> None:
                     log.info(f"Approved and moved: {fname} → Approved/{subdir}/")
                     _append_log(subdir, fname, "Approved → moved to Approved/")
                     _append_dashboard(subdir, fname, "Approved via dialog")
+                    log_action(  # TASK-8.4
+                        action_type="hitl_approved",
+                        actor="pending_approval_watcher",
+                        target=fname,
+                        parameters={"subdir": subdir},
+                        approval_status="approved",
+                        approved_by="human",
+                        result="moved to Approved/",
+                    )
                 except Exception as e:
                     log.error(f"Failed to move {fname}: {e}")
                     # Don't add to seen — will retry next scan
@@ -243,6 +298,15 @@ def _process_pending() -> None:
                     log.info(f"Rejected and moved: {fname} → Rejected/{subdir}/")
                     _append_log(subdir, fname, "Rejected → moved to Rejected/ and cleaned up related files")
                     _append_dashboard(subdir, fname, "Rejected via dialog")
+                    log_action(  # TASK-8.4
+                        action_type="hitl_rejected",
+                        actor="pending_approval_watcher",
+                        target=fname,
+                        parameters={"subdir": subdir},
+                        approval_status="rejected",
+                        approved_by="human",
+                        result="moved to Rejected/",
+                    )
                 except Exception as e:
                     log.error(f"Failed to reject {fname}: {e}")
                     continue

@@ -1,0 +1,9 @@
+Metadata-Version: 2.4
+Name: browser-mcp
+Version: 1.0.0
+Summary: MCP Server for browser automation — web navigation, form filling, and portal interactions
+License: MIT
+Requires-Python: >=3.10
+Requires-Dist: fastmcp>=2.12.0
+Requires-Dist: playwright>=1.40.0
+Requires-Dist: python-dotenv>=1.0.0

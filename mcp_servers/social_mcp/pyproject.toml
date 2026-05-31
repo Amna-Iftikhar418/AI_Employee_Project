@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "social-mcp"
+version = "1.0.0"
+description = "MCP Server for Facebook and Instagram posting via Meta Graph API"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+
+dependencies = [
+    "fastmcp>=2.12.0",
+    "requests>=2.31.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+social-mcp = "social_mcp.__main__:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = ["social_mcp"]

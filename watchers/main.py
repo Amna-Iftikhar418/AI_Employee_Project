@@ -333,12 +333,55 @@ def _startup_checks() -> None:
     log.info("Startup checks complete — launching processes...")
 
 
+def _wait_for_mcp_health(port: int, timeout: int = 30) -> bool:
+    """Poll the Email MCP /health endpoint until it responds or timeout expires."""
+    import urllib.request
+    url = f"http://127.0.0.1:{port}/health"
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(url, timeout=2) as resp:
+                if resp.status == 200:
+                    return True
+        except Exception:
+            pass
+        time.sleep(1)
+    return False
+
+
 def _launch_all() -> None:
     """Spawn every component in the correct order."""
 
+    # ── MCP Server 1: Email MCP (HTTP, port 8001) ─────────────────────────────
+    # Sends emails via Gmail API. Started as a child process; auto-restarted by
+    # _watch_loop() if it crashes.
     _spawn(["uv", "run", "mcp_server.py"])
-    log.info(f"Waiting 6 s for MCP server to bind port {MCP_PORT}...")
-    time.sleep(6)
+    log.info(f"Waiting for Email MCP to bind port {MCP_PORT}...")
+    if _wait_for_mcp_health(MCP_PORT, timeout=30):
+        log.info(f"Email MCP is healthy on port {MCP_PORT}.")
+    else:
+        log.warning(
+            f"Email MCP did not respond on port {MCP_PORT} within 30 s. "
+            "Continuing — _watch_loop will restart it if needed."
+        )
+
+    # ── MCP Server 2: Odoo MCP (stdio, managed by Claude Code) ───────────────
+    # Configured in .mcp.json; Claude Code starts it automatically via
+    # `uv --directory mcp_servers/odoo_mcp run odoo-mcp`. No action needed here.
+    log.info("Odoo MCP: stdio server — started automatically by Claude Code via .mcp.json.")
+
+    # ── MCP Server 3: Social MCP (stdio, managed by Claude Code) ─────────────
+    # Configured in .mcp.json; Claude Code starts it automatically via
+    # `uv --directory mcp_servers/social_mcp run social-mcp`. No action needed here.
+    log.info("Social MCP: stdio server — started automatically by Claude Code via .mcp.json.")
+
+    # ── MCP Server 4: Browser MCP (stdio, managed by Claude Code) ────────────
+    # Configured in .mcp.json; Claude Code starts it automatically via
+    # `uv --directory mcp_servers/browser_mcp run browser-mcp`. No action needed here.
+    # Provides: browser_navigate, browser_click, browser_fill_field, browser_screenshot, etc.
+    # NOTE: Run `uv --directory mcp_servers/browser_mcp run playwright install chromium`
+    #       once after first setup to install the Chromium binary.
+    log.info("Browser MCP: stdio server — started automatically by Claude Code via .mcp.json.")
 
     _spawn(["uv", "run", "watchers/gmail_watcher.py"])
     _spawn(["uv", "run", "watchers/run_watcher.py"])
@@ -356,8 +399,30 @@ def _launch_all() -> None:
     log.info("=" * 55)
 
 
+def _write_restart_log(cmd_str: str, exit_code: int, delay: int) -> None:
+    """TASK-7.5: Write a watchdog restart event to the vault daily log."""
+    try:
+        vault = ROOT / "vault" / "AI_Employee_Vault" / "Logs"
+        vault.mkdir(parents=True, exist_ok=True)
+        today    = time.strftime("%Y-%m-%d")
+        ts       = time.strftime("%H:%M:%S")
+        log_file = vault / f"log_{today}.md"
+        entry = (
+            f"\n[{ts}] [watchdog] RESTART: process crashed "
+            f"(exit {exit_code}) — restarting in {delay}s — cmd: {cmd_str}\n"
+        )
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(entry)
+    except OSError:
+        pass
+
+
 def _watch_loop() -> None:
-    """Keep main process alive and auto-restart any crashed child."""
+    """Keep main process alive and auto-restart any crashed child.
+
+    TASK-7.5: Writes a restart event to vault Logs/ whenever a child process
+    is detected as crashed and restarted.
+    """
     RESTART_DELAYS = {
         "whatsapp_watcher": 30,
     }
@@ -378,6 +443,10 @@ def _watch_loop() -> None:
                     f"Process exited (code {proc.returncode}): {cmd_str} "
                     f"— restarting in {delay}s..."
                 )
+
+                # TASK-7.5: Persist the crash event to vault Logs/
+                _write_restart_log(cmd_str, proc.returncode, delay)
+
                 time.sleep(delay)
 
                 if "mcp_server" in cmd_str:

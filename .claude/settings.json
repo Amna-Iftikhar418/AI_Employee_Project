@@ -29,7 +29,9 @@
       "Write(vault/AI_Employee_Vault/**)",
       "Edit(vault/AI_Employee_Vault/**)",
       "Write(.claude/skills/**)",
-      "Edit(.claude/skills/**)"
+      "Edit(.claude/skills/**)",
+      "Write(.claude/hooks/**)",
+      "Edit(.claude/hooks/**)"
     ]
   },
   "hooks": {
@@ -40,6 +42,17 @@
           {
             "type": "command",
             "command": "python -c \"from pathlib import Path; files=list(Path('vault/AI_Employee_Vault/Needs_Action').glob('TASK_*.md')); approved=list(Path('vault/AI_Employee_Vault/Approved').glob('TASK_*.md')); msgs=[]; msgs.append(f'[AI Employee] {len(files)} task(s) pending in Needs_Action: {[f.name for f in files]}') if files else None; msgs.append(f'[AI Employee] {len(approved)} task(s) awaiting execution in Approved: {[f.name for f in approved]}') if approved else None; [print(m) for m in msgs]\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/stop_hook.py"
           }
         ]
       }

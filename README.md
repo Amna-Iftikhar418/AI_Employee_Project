@@ -1,482 +1,319 @@
+# AI Employee Project
 
-# Personal AI Employee — Silver Tier
+An autonomous AI Employee that monitors Gmail and WhatsApp, processes incoming
+messages, creates structured plans, routes tasks through a human-approval workflow,
+sends emails, publishes LinkedIn and social media posts, and manages Odoo accounting.
 
-> An autonomous AI Employee built with **Claude Code**, **Python watchers**, and an **Obsidian vault**.
-> Monitors Gmail and WhatsApp, reasons over incoming messages, writes structured plans,
-> routes every action through a **human approval gate**, sends emails via a local MCP server,
-> and auto-publishes LinkedIn posts on a daily schedule.
-
----
-
-## Table of Contents
-
-- [Demo Run — Production Activity](#demo-run--production-activity)
-- [What It Does](#what-it-does)
-- [Architecture](#architecture)
-- [Agent Skills](#agent-skills-claudeskills)
-- [Watchers](#watchers-watchers)
-- [MCP Server](#mcp-server-mcp_serverpy)
-- [Security](#security)
-- [Error Handling](#error-handling)
-- [Resilience](#resilience)
-- [Audit Logging](#audit-logging)
-- [Human Approval Workflow](#human-approval-workflow)
-- [Vault Structure](#vault-structure-vaultai_employee_vault)
-- [Setup](#setup)
-- [Key Design Decisions](#key-design-decisions)
-- [Compliance Rules](#compliance-rules)
+See also: [Architecture](docs/architecture.md) · [Lessons Learned](docs/lessons_learned.md)
 
 ---
 
-## Demo Run — Production Activity
-
-Tasks completed today in production:
-
-| Time | Channel | Task | Result |
-|---|---|---|---|
-| 09:44 | Email | Reply to Amna — Subject: invoice | Sent via MCP |
-| 09:52 | WhatsApp | Reply to Amna — "Hello" | Completed |
-| 09:53 | LinkedIn | Post: "The future of no-code tools" | Published (Playwright) |
-| 12:05 | Email | Reply to Amna — Subject: Create LinkedIn Post on AI Automation | Sent via MCP |
-| 12:02 | WhatsApp | Reply to Amna — 12:00 PM message | Completed |
-| 12:12 | LinkedIn | Post: "How I stay consistent in coding every day" | Published (Playwright) |
-| 15:29 | WhatsApp | Reply to Amna — 03:00 PM message | Completed |
-| 15:29 | Email | Reply to Amna — Subject: payment | Sent via MCP |
-| 15:33 | LinkedIn | Post: "Lessons from building AI systems" | Published (Playwright) |
-| 16:32 | Email | Reply to Amna — Subject: business | Sent via MCP |
-| 16:32 | WhatsApp | 3× batch replies to Amna (04:06 PM) | Completed |
-
-**3 LinkedIn posts published · 4 emails sent · 7 WhatsApp replies sent**
-
----
-
-## What It Does
-
-| Channel | Capability |
-|---|---|
-| **Gmail** | Polls every 30 s → reads emails → creates task → drafts reply → Windows dialog approval → sends |
-| **WhatsApp** | Listens live → receives messages → creates task → drafts reply → Windows dialog approval → replies |
-| **LinkedIn** | Daily 09:00 auto-generates post via AI → manual Obsidian approval → publishes via Playwright |
-| **Email (MCP)** | Sends real emails through a local FastAPI MCP server using Gmail OAuth |
-| **Approval UI** | Native Windows Yes/No dialog pops for every email/WhatsApp task — no Obsidian needed |
-| **Scheduler** | Daily LinkedIn post + Monday CEO Briefing auto-generated |
-
----
-
-## Architecture
-
-```
-Gmail ──────────────────────────────────────────────────────────────────┐
-                                                                        │
-WhatsApp ───────────────────────────────────────────────────────────────┤
-                                                                        ▼
-                                                            Python Watchers
-                                                                        │
-                                                   vault/AI_Employee_Vault/Inbox/
-                                                                        │
-                                                    Needs_Action/   ◄── FileSystem Watcher
-                                                                        │
-                                               Claude (Agent Skills)   ─┘
-                                                   reads task → invokes skill
-                                                                        │
-                                                         Plans/   ◄── PLAN_*.md (MANDATORY)
-                                                                        │
-                                                   Pending_Approval/  ◄── pending_approval_watcher
-                                                                        │            (Windows Yes/No dialog)
-                                                         Approved/   ◄── dialog Yes / manual move
-                                                                        │
-                                              approved_watcher auto-executes
-                                                                        │
-                                                             Done/   ◄── task complete
-                                                                        │
-                                                   Dashboard.md + Logs/ updated
-```
-
-```
-Scheduler (09:00 daily)
-    └── linkedin_post_creator skill → PLAN + POST → Pending_Approval/linkedin/
-                                                    │
-                                            human approves
-                                                    │
-                                         Approved/linkedin/
-                                                    │
-                                   approved_watcher → linkedin_executor.py
-                                                    │
-                                         LinkedIn post published
-                                                    │
-                                            Done/linkedin/
-```
-
----
-
-## Agent Skills (`.claude/skills/`)
-
-All AI logic is implemented as **Agent Skills** — Claude Code's native skill format.
-`CLAUDE.md` defines when each skill is triggered automatically.
-
-| Skill | Trigger |
-|---|---|
-| `gmail_handler` | `TASK_*.md` with `type: email_task` appears in `Needs_Action/email/` |
-| `whatsapp_handler` | `TASK_*.md` with `type: whatsapp_task` appears in `Needs_Action/whatsapp/` |
-| `generate_plan` | Any task that needs a structured `PLAN_*.md` before action |
-| `file_handler` | General file tasks in `Needs_Action/` |
-| `send_email` | Approved email tasks in `Approved/email/` |
-| `process_approved` | Any non-LinkedIn approved task |
-| `linkedin_post_creator` | User request or daily scheduler trigger |
-| `linkedin_publisher` | Fully automated via `approved_watcher.py` — never invoked manually |
-
----
-
-## Watchers (`watchers/`)
-
-All watchers are started and supervised by `main.py`:
-
-| Watcher | Purpose |
-|---|---|
-| `gmail_watcher.py` | Polls Gmail every 30 s → writes emails to `Inbox/email/` |
-| `run_watcher.py` | Filesystem watcher: `Inbox/email/` → creates `TASK_*.md` in `Needs_Action/email/` |
-| `task_processor.py` | Scans `Needs_Action/` → auto-generates plans → routes to `Pending_Approval/` |
-| `whatsapp_watcher.py` | Node.js WhatsApp client → writes messages to `Inbox/whatsapp/` |
-| `whatsapp_inbox_watcher.py` | Watches `Inbox/whatsapp/` → creates `TASK_*.md` in `Needs_Action/whatsapp/` |
-| `approved_watcher.py` | Watches `Approved/` → auto-executes emails, WhatsApp, LinkedIn tasks |
-| `pending_approval_watcher.py` | Watches `Pending_Approval/email/` and `Pending_Approval/whatsapp/` → shows Windows Yes/No dialog → moves approved tasks to `Approved/` automatically |
-| `scheduler.py` | Daily 09:00 LinkedIn post + Monday 08:00 CEO Briefing |
-
-**Startup order** (`main.py` starts these in sequence):
-1. `mcp_server.py` — waits 6 s before next
-2. `gmail_watcher.py`
-3. `run_watcher.py`
-4. `task_processor.py`
-5. `whatsapp_watcher.py`
-6. `whatsapp_inbox_watcher.py`
-7. `approved_watcher.py`
-8. `pending_approval_watcher.py`
-9. `scheduler.py`
-
----
-
-## MCP Server (`mcp_server.py`)
-
-Local **FastAPI** server on `http://127.0.0.1:8001`.
-
-| Endpoint | Purpose |
-|---|---|
-| `POST /send-email` | Sends real email via Gmail API — requires `X-API-Key` header |
-| `GET /health` | Health check — polled by `approved_watcher.py` before every email send |
-
----
-
-## Security
-
-### Secrets Management
-
-| Item | Implementation |
-|---|---|
-| All API keys | Stored in `.env` — never hardcoded |
-| `.env` exclusion | Listed in `.gitignore` alongside `token.json`, `credentials.json`, `.wwebjs_auth/` |
-| OAuth tokens | Stored in Windows Credential Manager via `keyring`; file fallback at `token.json` (mode 0o600) |
-| Token refresh | Auto-refreshed on expiry via `google.auth.transport.requests.Request` |
-| Key rotation | Rotate `MCP_API_KEY` and `GROQ_API_KEY` every 90 days — update `.env` and restart |
-
-> **Never commit `.env` to git.** Use `.env.example` as the safe template.
-
-### MCP Server Hardening
-
-| Protection | Detail |
-|---|---|
-| API key auth | `X-API-Key` header required on every request |
-| Timing-safe comparison | `hmac.compare_digest()` — prevents timing-based key extraction |
-| Per-IP rate limiting | Max 5 failed auth attempts per 60 s window — temporary block on breach |
-| Email validation | Regex `^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$` |
-| Header injection | Newline characters (`\n`, `\r`) stripped from `To`, `Subject` fields |
-| Field length limits | Subject ≤ 998 chars, body ≤ 10 MB |
-| Socket timeout | Global 30 s timeout via `socket.setdefaulttimeout(30)` |
-
-### Path & File Safety
-
-| Protection | Detail |
-|---|---|
-| Path traversal | `..`, `/`, `\` stripped from sender names before building file paths (`gmail_watcher.py`) |
-| File locking | `FileLock` (10 s timeout) on all vault writes — prevents concurrent corruption |
-| Atomic writes | JSON state files written to `.tmp` then renamed with `os.replace()` — crash-safe |
-| Single instance | PID file at `.ai_employee.pid` — prevents duplicate process launches |
-
-### Sandbox / Development Mode
-
-| Flag | Scope | Behavior |
-|---|---|---|
-| `DRY_RUN=true` | Email sending | Skips HTTP call to MCP server — logs `[DRY RUN]` instead |
-| `DEV_MODE=true` | LinkedIn posting | Skips browser automation — logs `[DEV MODE]` instead |
-
-Set either flag in `.env` when testing to prevent real emails or posts from being sent.
-
----
-
-## Error Handling
-
-### Retry Logic
-
-| Component | Retries | Backoff | Behavior on max retries |
-|---|---|---|---|
-| Gmail API | 3 | Exponential (`2^n` s: 2 s, 4 s) | Raises error, task stays in `Needs_Action/` |
-| Email send | 3 | None (retry on next watcher cycle) | Task moved to `Failed/email/` automatically |
-| LinkedIn post | 2 | 5 s before attempt 2 | Task stays in `Approved/` for manual retry |
-
-**Terminal errors** (LinkedIn) skip retries immediately:
-- `NOT_LOGGED_IN` — session expired, requires manual login
-- `node is not installed` — environment issue
-- `All text entry methods failed` — LinkedIn UI changed
-- `Missing --content-file` — script invocation error
-
-### Exception Handling
-
-| Exception type | Handling |
-|---|---|
-| `HttpError` (429/500/503) | Retried with exponential backoff |
-| `socket.timeout` | Retried with backoff |
-| `FileNotFoundError` | Raised immediately — plan/task file missing |
-| `ValueError` | Raised immediately — invalid data (e.g. no recipient) |
-| `subprocess.TimeoutExpired` | Caught — treated as fatal, task logged as failed |
-| Any uncaught exception | Caught at loop level — logs stack trace, sleeps 10 s, continues |
-
-### MCP Health Check
-
-`approved_watcher.py` pings `http://localhost:8001/health` (3 s timeout) **before** every email send.
-If MCP is unreachable, the email task is skipped — not burned through retries — and retried on the next watcher cycle.
-
-### Failed Task Routing
-
-```
-Email task fails 3 times
-        │
-        ▼
-status: failed
-        │
-        ▼
-Auto-moved to: vault/AI_Employee_Vault/Failed/email/
-        │
-        ▼
-Manual review required (check logs for root cause)
-```
-
----
-
-## Resilience
-
-### Process Management (`main.py`)
-
-| Feature | Detail |
-|---|---|
-| Auto-restart | Watch loop polls child processes every 5 s — restarts on exit |
-| Restart delays | WhatsApp watcher: 30 s; all others: 10 s |
-| Single instance | PID lock file prevents duplicate launches |
-| Graceful shutdown | `SIGINT`/`SIGTERM` handlers — 5 s terminate timeout, then force-kill; PID cleaned up |
-| Port recovery | Auto-frees port 8001 if held by a stale process at startup |
-| Vault write check | Tests write access to all vault directories before any watcher starts |
-| OneDrive warning | Detects if project is in a OneDrive-synced folder (causes permission conflicts) |
-
-### WhatsApp Watcher Circuit Breaker
-
-```python
-MAX_RESTARTS = 5         # give up after 5 rapid crashes
-RESTART_DELAY = 12       # seconds before each restart
-MIN_HEALTHY_UPTIME = 60  # reset crash counter if running ≥ 60 s
-```
-
-After 5 consecutive crashes the watcher stops restarting to prevent an infinite crash loop.
-Stale Chrome `SingletonLock` files are auto-deleted before each restart.
-
-### Scheduler Catch-Up
-
-If `scheduler.py` starts after 09:00 and no LinkedIn post exists for today → generates one immediately.
-If it starts on Monday and no CEO Briefing exists for this week → generates one immediately.
-
----
-
-## Audit Logging
-
-Every action is logged to `vault/AI_Employee_Vault/Logs/log_YYYY-MM-DD.md` (one file per day).
-
-### Log entry fields
-
-| Field | Example |
-|---|---|
-| Timestamp | `2026-03-25T09:38:07.249333` |
-| Action type | `[PENDING APPROVAL]`, `[EMAIL SENT]`, `[LINKEDIN POST PUBLISHED]`, `[FAILURE]`, `[COMPLETED]`, `[REJECTED]` |
-| Task identity | `TASK_email_john_doe_20260325_093807.txt.md` |
-| Actor / source | `From: John Doe <john@example.com>` |
-| Target | Subject, recipients, post topic |
-| Approval status | `awaiting_approval`, `completed`, `failed`, `rejected` |
-| Result | Success details, error messages, attempt counts |
-
-### Example log entry
-
-```markdown
-## 2026-03-25T09:38:07.249333 — email_john_doe_20260325_093807 [PENDING APPROVAL]
-
-- Task: TASK_email_john_doe_20260325_093807.txt.md
-- Plan: PLAN_email_john_doe_20260325_093807.txt.md (created)
-- From: John Doe <john@example.com>
-- Subject: Project update
-- Status: awaiting_approval
-- Action: Moved to Pending_Approval
-- Note: Email reply requires human approval
-```
-
-All log writes use `FileLock` to prevent concurrent corruption from multiple watcher processes.
-
----
-
-## Human Approval Workflow
-
-Claude **never** sends emails or publishes LinkedIn posts without explicit human approval:
-
-```
-1. Claude creates PLAN_*.md  →  task moves to Pending_Approval/
-2a. pending_approval_watcher detects file → pops Windows Yes/No dialog
-      Yes  →  file auto-moved to Approved/   →  approved_watcher executes within 5 s
-      No   →  file stays in Pending_Approval/ (manual move still available)
-   OR
-2b. Manually move file to Approved/   →  approved_watcher auto-executes within 5 s
-   OR
-2c. Manually move file to Rejected/   →  task archived, logged
-```
-
-**Approval is enforced structurally** — `task_processor.py` has `require_approval_for_all = True` hardcoded.
-There is no code path that executes from `Needs_Action/` or `Pending_Approval/` directly.
-
-### Windows Approval Dialog
-
-`pending_approval_watcher.py` shows a native Windows dialog for every new email/WhatsApp task:
-
-| Field shown | Source |
-|---|---|
-| File name | `TASK_*.md` filename |
-| From | `sender` / `from` frontmatter field |
-| Subject | `subject` frontmatter field (email only) |
-
-- Dialog pops as always-on-top (`MB_SYSTEMMODAL`) — won't get buried behind other windows
-- Each file is asked **once** — state persisted in `Pending_Approval/.processed_pending_review.json`
-- LinkedIn tasks are **not** shown in the dialog — handled manually via Obsidian
-
----
-
-## Vault Structure (`vault/AI_Employee_Vault/`)
-
-```
-vault/AI_Employee_Vault/
-├── Inbox/
-│   ├── email/              ← Gmail emails land here (raw .txt)
-│   └── whatsapp/           ← WhatsApp messages land here (raw .txt)
-├── Needs_Action/
-│   ├── email/              ← TASK_*.md waiting for Claude
-│   └── whatsapp/           ← TASK_*.md waiting for Claude
-├── Plans/
-│   ├── email/              ← PLAN_*.md (auto-generated, mandatory)
-│   ├── whatsapp/           ← PLAN_*.md
-│   └── linkedin/           ← PLAN_LINKEDIN_*.md
-├── Pending_Approval/       ← Awaiting human review
-│   ├── email/
-│   ├── whatsapp/
-│   └── linkedin/
-├── Approved/               ← Human approved — ready for execution
-│   ├── email/
-│   ├── whatsapp/
-│   └── linkedin/
-├── Rejected/               ← Human rejected
-├── Failed/                 ← Tasks that exhausted all retries
-│   └── email/
-├── Done/                   ← Completed tasks
-│   ├── email/
-│   ├── whatsapp/
-│   └── linkedin/
-├── Logs/                   ← Daily audit log: log_YYYY-MM-DD.md
-├── Briefings/              ← Auto-generated Monday CEO briefings
-├── Dashboard.md            ← Live activity feed (append-only)
-└── Company_Handbook.md     ← Operating rules all skills must follow
-```
+## Prerequisites
+
+| Requirement | Version | Notes |
+|-------------|---------|-------|
+| Python | 3.11+ | Install via [uv](https://github.com/astral-sh/uv) |
+| uv | latest | `pip install uv` or `winget install astral-sh.uv` |
+| Node.js | 18+ | Required for Playwright MCP (LinkedIn automation) |
+| Claude Code CLI | latest | `npm install -g @anthropic-ai/claude-code` |
+| Git | any | For cloning and version control |
+
+**External services required:**
+
+| Service | Purpose | How to obtain |
+|---------|---------|---------------|
+| Google Cloud project | Gmail API | [console.cloud.google.com](https://console.cloud.google.com) → enable Gmail API → download `credentials.json` |
+| Meta Developer App | Facebook & Instagram | [developers.facebook.com](https://developers.facebook.com) → create app → add `pages_manage_posts`, `instagram_content_publish` permissions → generate long-lived Page Access Token |
+| Odoo Community | Accounting | Self-hosted on port 8069. Install via `python odoo/odoo-bin -c odoo.conf` or Docker |
+| Anthropic API key | Claude Code | [console.anthropic.com](https://console.anthropic.com) → create API key → `claude auth login` |
 
 ---
 
 ## Setup
 
-### 1. Install dependencies
+### 1. Clone and install dependencies
 
-```bash
+```powershell
+git clone <repo-url>
+cd AI_Employee_Project
 uv sync
 npm install
 ```
 
-### 2. Configure environment
+### 2. Configure environment variables
 
-```bash
-cp .env.example .env
+```powershell
+copy .env.example .env
+# Edit .env and fill in all values (see .env.example for field descriptions)
 ```
 
-Edit `.env`:
+**Required values in `.env`:**
+- `MCP_API_KEY` — generate with: `python -c "import secrets; print(secrets.token_hex(32))"`
+- `GMAIL_CREDENTIALS_PATH` — path to `credentials.json` from Google Cloud Console
+- `META_PAGE_ACCESS_TOKEN`, `META_PAGE_ID`, `META_IG_USER_ID` — from Facebook Developer portal
+- `ODOO_URL`, `ODOO_DB`, `ODOO_USERNAME`, `ODOO_PASSWORD` — your local Odoo instance
+- `TELEGRAM_BOT_TOKEN` — from [@BotFather](https://t.me/botfather) on Telegram (for alerts)
 
-| Variable | Required | Notes |
-|---|---|---|
-| `MCP_API_KEY` | Yes | Generate: `python -c "import secrets; print(secrets.token_hex(32))"` |
-| `GMAIL_CREDENTIALS_PATH` | Yes | Download `credentials.json` from Google Cloud Console |
-| `GROQ_API_KEY` | Yes | Free at [console.groq.com](https://console.groq.com) |
-| `GEMINI_API_KEY` | Optional | Alternative LLM at [aistudio.google.com](https://aistudio.google.com) |
-| `DRY_RUN` | Optional | `true` to skip real email sends (testing) |
-| `DEV_MODE` | Optional | `true` to skip real LinkedIn posts (development) |
+### 3. Authenticate Gmail (first time only)
 
-### 3. Gmail OAuth (first run only)
-
-```bash
+```powershell
 uv run watchers/gmail_watcher.py
-# Browser opens → authorize → token.json saved automatically
 ```
 
-### 4. LinkedIn login (for auto-publishing)
+Follow the OAuth prompt in your browser. A `token.json` file will be saved in the
+project root. This step is required only once; the token auto-refreshes after that.
 
-```bash
-node linkedin_login.js
-# Browser opens → log in manually → session saved for Playwright
+### 4. Authenticate Claude Code (first time only)
+
+```powershell
+claude auth login
 ```
 
-### 5. Start the full system
+### 5. Start Odoo (if using accounting features)
 
-```bash
+```powershell
+python odoo/odoo-bin -c odoo.conf
+# Odoo must be running on port 8069 before the Odoo MCP can connect
+```
+
+### 6. Start the AI Employee
+
+```powershell
 uv run watchers/main.py
 ```
 
-Press `Ctrl+C` to stop all processes gracefully.
+---
 
-### 6. Open Claude Code (second terminal)
+## How to Start
 
-```bash
-claude
+```powershell
+uv run watchers/main.py
 ```
 
-Claude loads `CLAUDE.md` automatically and knows all 8 skills.
+This single command starts **all** components:
+
+| Component | Description |
+|-----------|-------------|
+| `mcp_server.py` | Email MCP server (port 8001) |
+| `gmail_watcher.py` | Polls Gmail for new messages |
+| `whatsapp_watcher.py` | Monitors WhatsApp via WhatsApp Web |
+| `whatsapp_inbox_watcher.py` | Processes WhatsApp inbox files |
+| `run_watcher.py` | Monitors for new task files |
+| `task_processor.py` | Processes Needs_Action tasks |
+| `approved_watcher.py` | Executes approved tasks |
+| `pending_approval_watcher.py` | Prompts human for approval |
+| `scheduler.py` | Daily LinkedIn posts, weekly briefings |
 
 ---
 
-## Key Design Decisions
+## MCP Servers
 
-| Decision | Why |
-|---|---|
-| **Vault-first architecture** | All state is in plain markdown files — inspectable, editable, version-controllable |
-| **Human-in-the-loop mandatory** | No email or LinkedIn post ever executes without a file in `Approved/` |
-| **Plan before action** | Every task requires a `PLAN_*.md` with `## Proposed Response` — enforced by skills |
-| **FileLock on shared files** | `Dashboard.md` and daily logs are written by multiple processes — `filelock` prevents corruption |
-| **Atomic writes** | All JSON state files use write-to-.tmp + `os.replace()` — crash-safe |
-| **Auto-restart** | `main.py` watch loop restarts any crashed child process within 5–30 s |
-| **MCP health check** | `approved_watcher.py` pings `/health` before each email send — avoids burning retries when server is down |
-| **Failed task routing** | Email tasks that exhaust 3 retries are moved to `Failed/email/` — `Approved/` stays clean |
-| **Dedup by message ID** | Gmail and WhatsApp use message IDs (not content hash) — identical messages at different times both arrive |
+The system uses three MCP (Model Context Protocol) servers:
+
+### 1. Email MCP
+
+| Property | Value |
+|----------|-------|
+| **Name** | Email MCP |
+| **Transport** | HTTP (FastAPI + uvicorn) |
+| **Port** | `8001` |
+| **Purpose** | Send emails via Gmail API on behalf of the AI Employee |
+| **Entry point** | `mcp_server.py` |
+| **Endpoint** | `POST http://localhost:8001/send-email` |
+| **Health check** | `GET http://localhost:8001/health` |
+
+**How to start manually:**
+```powershell
+uv run mcp_server.py
+```
+
+**Required env vars:**
+```
+MCP_API_KEY=<strong random key>
+GMAIL_TOKEN_PATH=token.json
+GMAIL_CREDENTIALS_PATH=credentials.json
+```
+
+**Auto-start:** Started automatically by `watchers/main.py`. Restarted automatically
+if it crashes (via `_watch_loop`). Port 8001 is freed at startup if anything else is using it.
+The launcher polls `/health` for up to 30 seconds before proceeding.
 
 ---
 
-## Compliance Rules
+### 2. Odoo MCP
 
-- **NEVER skip plan creation** — every action requires a `PLAN_*.md` first
-- **NEVER send emails without approval** — all communication goes through `Pending_Approval/`
-- **NEVER post to LinkedIn without approval** — posts always require human sign-off
-- **ALWAYS append to logs and Dashboard** — never overwrite existing entries
-- **ALWAYS follow `Company_Handbook.md`** — all skills operate within defined rules
-- **Financial and communication actions require approval** — no exceptions
+| Property | Value |
+|----------|-------|
+| **Name** | Odoo MCP |
+| **Transport** | stdio (MCP protocol) |
+| **Port** | N/A — communicates over stdin/stdout |
+| **Purpose** | Read invoices, create draft invoices, query account balances, draft payments in Odoo Community |
+| **Entry point** | `mcp_servers/odoo_mcp/` |
+| **Config** | `.mcp.json` → `"odoo"` server block |
+
+**How to start manually:**
+```powershell
+uv --directory mcp_servers/odoo_mcp run odoo-mcp
+```
+
+**Required env vars:**
+```
+ODOO_URL=http://localhost:8069
+ODOO_DB=odoo
+ODOO_USERNAME=admin
+ODOO_PASSWORD=admin
+ODOO_API_VERSION=json-rpc
+```
+
+**Auto-start:** Claude Code starts this server automatically when you open the project,
+via the `"odoo"` entry in `.mcp.json`. No manual start needed during normal use.
+
+> **Note:** Odoo Community must be running on port 8069 before the MCP can connect.
+> Start Odoo with: `python odoo/odoo-bin -c odoo.conf`
+
+---
+
+### 3. Social MCP
+
+| Property | Value |
+|----------|-------|
+| **Name** | Social MCP |
+| **Transport** | stdio (MCP protocol) |
+| **Port** | N/A — communicates over stdin/stdout |
+| **Purpose** | Post to Facebook Pages and Instagram via Meta Graph API |
+| **Entry point** | `mcp_servers/social_mcp/` |
+| **Config** | `.mcp.json` → `"social"` server block |
+
+**How to start manually:**
+```powershell
+uv --directory mcp_servers/social_mcp run social-mcp
+```
+
+**Required env vars:**
+```
+META_PAGE_ACCESS_TOKEN=<long-lived page access token>
+META_PAGE_ID=<numeric page id>
+META_IG_USER_ID=<instagram business user id>
+META_GRAPH_API_VERSION=v21.0
+```
+
+**Auto-start:** Claude Code starts this server automatically via the `"social"` entry
+in `.mcp.json`. No manual start needed during normal use.
+
+---
+
+## Vault Folder Structure
+
+```
+vault/AI_Employee_Vault/
+├── Inbox/
+│   ├── email/          <- Raw incoming emails
+│   └── whatsapp/       <- Raw incoming WhatsApp messages
+├── Needs_Action/
+│   ├── email/          <- Tasks awaiting AI processing
+│   ├── whatsapp/       <- WhatsApp tasks awaiting processing
+│   ├── odoo/           <- Odoo tasks awaiting processing
+│   └── social/         <- Social media tasks
+├── Plans/              <- PLAN_*.md files (one per task)
+├── Pending_Approval/
+│   ├── email/          <- Drafts awaiting human approval
+│   ├── linkedin/       <- LinkedIn posts awaiting approval
+│   ├── social/         <- Facebook/Instagram posts awaiting approval
+│   └── odoo/           <- Odoo actions awaiting approval
+├── Approved/           <- Human-approved tasks ready to execute
+├── Rejected/           <- Human-rejected tasks
+├── Done/               <- Completed tasks (archived)
+├── Logs/               <- Daily log files (log_YYYY-MM-DD.md)
+└── Dashboard.md        <- Live status dashboard
+```
+
+---
+
+## Human-in-the-Loop (HITL) Approval
+
+Every AI action goes through human approval before execution:
+
+```
+Inbox -> Needs_Action -> [AI creates Plan] -> Pending_Approval
+                                                     |
+                                           Human reviews (Y/N)
+                                                     |
+                              Approved/ -> Execute -> Done/
+                              Rejected/ -> Archive
+```
+
+`pending_approval_watcher.py` prompts you in the terminal for each pending task.
+Press `Y` to approve, `N` to reject.
+
+**Rules that are never bypassed:**
+- Emails are never sent without a file in `Approved/email/`
+- LinkedIn posts are never published without a file in `Approved/linkedin/`
+- Facebook/Instagram posts are never published without a file in `Approved/social/`
+- Odoo invoices/payments are never posted without a file in `Approved/odoo/`
+
+---
+
+## Agent Skills
+
+All AI logic lives in `.claude/skills/`. Skills are invoked by Claude Code:
+
+| Skill | Trigger |
+|-------|---------|
+| `gmail_handler` | New `TASK_*.md` in `Needs_Action/email/` |
+| `whatsapp_handler` | New `TASK_*.md` in `Needs_Action/whatsapp/` |
+| `odoo_handler` | New `TASK_odoo_*.md` in `Needs_Action/odoo/` or `Approved/odoo/` |
+| `facebook_instagram_poster` | User request or `SOCIAL_POST_*.md` in `Needs_Action/social/` |
+| `linkedin_post_creator` | User request or daily scheduler (09:00) |
+| `linkedin_publisher` | Approved LinkedIn post — publishes via Playwright MCP |
+| `send_email` | Approved email task in `Approved/email/` |
+| `process_approved` | Any non-LinkedIn task in `Approved/` |
+| `generate_plan` | Any task needing a structured PLAN file |
+| `weekly_audit` | Every Monday 08:00 or manual CEO briefing request |
+
+---
+
+## Troubleshooting
+
+### "Another instance is already running"
+A stale PID lock exists. Delete `.ai_employee.pid` in the project root, then restart:
+```powershell
+Remove-Item .ai_employee.pid -ErrorAction SilentlyContinue
+uv run watchers/main.py
+```
+
+### "Port 8001 is in use"
+`main.py` auto-kills the holding process on startup. If it still fails, free it manually:
+```powershell
+netstat -ano | findstr :8001
+taskkill /F /PID <PID>
+```
+
+### Gmail watcher not picking up emails
+1. Check `token.json` exists — if missing, re-run `uv run watchers/gmail_watcher.py` to re-authenticate.
+2. Check `vault/AI_Employee_Vault/Logs/log_<today>.md` for `[AuthError]` entries.
+3. Verify `GMAIL_CREDENTIALS_PATH` and `GMAIL_TOKEN_PATH` in `.env` point to the right files.
+
+### OneDrive permission errors
+Move the project out of OneDrive-synced folders:
+```powershell
+xcopy /E /I /H /Y "C:\Users\<you>\OneDrive\AI_Employee_Project" "C:\AI_Employee_Project"
+cd C:\AI_Employee_Project
+uv run watchers/main.py
+```
+
+### Odoo MCP not connecting
+1. Confirm Odoo is running: open [http://localhost:8069](http://localhost:8069) in browser.
+2. Verify `ODOO_URL`, `ODOO_DB`, `ODOO_USERNAME`, `ODOO_PASSWORD` in `.env`.
+3. Restart Claude Code to reload the MCP server from `.mcp.json`.
+
+### Facebook/Instagram posts not publishing
+1. Check `META_PAGE_ACCESS_TOKEN` is still valid (tokens expire after 60 days).
+2. Regenerate at [developers.facebook.com](https://developers.facebook.com) → your app → Access Token Tool.
+3. Confirm `META_PAGE_ID` and `META_IG_USER_ID` match your page/account.
+
+---
+
+## Further Reading
+
+- [Architecture](docs/architecture.md) — component diagram, data flow, domain-specific pipelines
+- [Lessons Learned](docs/lessons_learned.md) — what worked, what was hard, what to do differently

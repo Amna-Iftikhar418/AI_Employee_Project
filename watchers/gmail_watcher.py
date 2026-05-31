@@ -10,10 +10,11 @@ import logging.handlers
 import os
 import re
 import socket
+import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from time import sleep
-import sys
 
 # FIX: Load .env before any other import that may need env vars
 from dotenv import load_dotenv
@@ -28,6 +29,15 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+
+# Retry + alert utilities (TASK-7)
+_WATCHERS_DIR = Path(__file__).parent
+if str(_WATCHERS_DIR) not in sys.path:
+    sys.path.insert(0, str(_WATCHERS_DIR))
+from retry_handler import (  # noqa: E402
+    TransientError, AuthError, with_retry,
+    write_log_alert, write_dashboard_alert,
+)
 
 # ------------------------------------------------------------------
 # Structured rotating logger — prevents unbounded log file growth
@@ -52,8 +62,11 @@ socket.setdefaulttimeout(30)
 # Gmail API scope — read and modify (to mark as read)
 SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 
-# FIX: Retry budget for transient API errors (rate-limit / server errors)
+# Retry budget kept for reference; actual retry is via @with_retry (TASK-7)
 MAX_API_RETRIES = 3
+
+# Auth pause duration: after a RefreshError, skip Gmail calls for this long (TASK-7.6)
+AUTH_PAUSE_SECONDS = 1800  # 30 minutes
 
 
 class GmailInboxWatcher:
@@ -86,6 +99,14 @@ class GmailInboxWatcher:
 
         # FIX: Lock file prevents two processes corrupting processed_emails.json
         self._lock = FileLock(str(self.processed_file) + ".lock")
+
+        # TASK-7.6: Auth-pause state — set on RefreshError, cleared after timeout
+        self._auth_paused_until: float = 0.0
+
+        # TASK-7.3: Failed-email queue — IDs that couldn't be fetched due to
+        # transient errors; retried at the start of every poll cycle
+        self._failed_queue_file = self.inbox_path / ".failed_email_queue.json"
+        self._failed_queue_lock = FileLock(str(self._failed_queue_file) + ".lock")
 
         # FIX: Validate environment before starting — fail fast with clear errors
         self._check_startup()
@@ -214,13 +235,29 @@ class GmailInboxWatcher:
         return None
 
     def _authenticate(self) -> Credentials:
-        """Authenticate with Gmail API using OAuth."""
+        """Authenticate with Gmail API using OAuth.
+
+        TASK-7.6: On RefreshError (expired/revoked token), writes an alert to
+        Logs/ and Dashboard, sets _auth_paused_until, and re-raises AuthError
+        so callers can pause operations cleanly.
+        """
+        import google.auth.exceptions as _gae
+
         creds = self._load_token()
 
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 logger.info("Refreshing expired token")
-                creds.refresh(Request())
+                try:
+                    creds.refresh(Request())
+                except _gae.RefreshError as exc:
+                    msg = f"Gmail token refresh failed — token is expired or revoked: {exc}"
+                    logger.error(msg)
+                    write_log_alert(msg, domain="gmail")
+                    write_dashboard_alert("Gmail", "Token expired — re-authenticate required")
+                    self._auth_paused_until = time.time() + AUTH_PAUSE_SECONDS
+                    self.service = None
+                    raise AuthError(msg) from exc
             else:
                 if not self.credentials_path.exists():
                     raise FileNotFoundError(
@@ -236,6 +273,69 @@ class GmailInboxWatcher:
             self._save_token(creds)
 
         return creds
+
+    # ------------------------------------------------------------------
+    # Failed-email queue helpers (TASK-7.3)
+    # ------------------------------------------------------------------
+
+    def _load_failed_queue(self) -> list:
+        """Load email IDs that failed with transient errors and need retry."""
+        with self._failed_queue_lock:
+            if self._failed_queue_file.exists():
+                try:
+                    data = json.loads(self._failed_queue_file.read_text(encoding="utf-8"))
+                    return list(data.get("queued", []))
+                except (json.JSONDecodeError, OSError):
+                    return []
+        return []
+
+    def _add_to_failed_queue(self, email_id: str) -> None:
+        """Queue an email ID for retry on the next cycle."""
+        with self._failed_queue_lock:
+            queued: list = []
+            if self._failed_queue_file.exists():
+                try:
+                    data = json.loads(self._failed_queue_file.read_text(encoding="utf-8"))
+                    queued = list(data.get("queued", []))
+                except (json.JSONDecodeError, OSError):
+                    pass
+            if email_id not in queued:
+                queued.append(email_id)
+            tmp = self._failed_queue_file.with_suffix(".tmp")
+            tmp.write_text(json.dumps({"queued": queued}, indent=2), encoding="utf-8")
+            os.replace(str(tmp), str(self._failed_queue_file))
+        logger.info("Email %s queued for retry on next cycle.", email_id[:8])
+
+    def _remove_from_failed_queue(self, email_id: str) -> None:
+        """Remove a successfully processed email ID from the failed queue."""
+        with self._failed_queue_lock:
+            if not self._failed_queue_file.exists():
+                return
+            try:
+                data = json.loads(self._failed_queue_file.read_text(encoding="utf-8"))
+                queued = [i for i in data.get("queued", []) if i != email_id]
+                tmp = self._failed_queue_file.with_suffix(".tmp")
+                tmp.write_text(json.dumps({"queued": queued}, indent=2), encoding="utf-8")
+                os.replace(str(tmp), str(self._failed_queue_file))
+            except (json.JSONDecodeError, OSError):
+                pass
+
+    def _process_failed_queue(self) -> None:
+        """Retry all emails in the failed queue. Removes each on success."""
+        queued = self._load_failed_queue()
+        if not queued:
+            return
+        logger.info("Retrying %d queued email(s) from failed queue...", len(queued))
+        for email_id in list(queued):
+            try:
+                self.process_email({"id": email_id})
+                self._remove_from_failed_queue(email_id)
+                logger.info("Queued email %s processed successfully.", email_id[:8])
+            except TransientError:
+                logger.warning("Queued email %s still failing — keeping in queue.", email_id[:8])
+            except Exception as exc:
+                logger.exception("Unexpected error retrying queued email %s: %s", email_id[:8], exc)
+                self._remove_from_failed_queue(email_id)
 
     def _get_service(self):
         """Get Gmail API service instance (cached after first call)."""
@@ -338,39 +438,30 @@ class GmailInboxWatcher:
         return self.inbox_path / f"email_{base_name}_{ts}.txt"
 
     # ------------------------------------------------------------------
-    # API call wrapper with retry + timeout
+    # API call wrapper with retry + timeout (TASK-7.2)
     # ------------------------------------------------------------------
 
+    @with_retry(
+        max_attempts=3,
+        base_delay=1.0,
+        max_delay=60.0,
+        retryable=(TransientError,),
+        log_domain="gmail",
+    )
     def _api_call(self, request_builder):
-        """Execute a Gmail API request with exponential-backoff retry.
-
-        FIX: Retries on rate-limit (429) and transient server errors (5xx).
-        Socket timeout is already enforced globally (socket.setdefaulttimeout).
-        """
-        for attempt in range(1, MAX_API_RETRIES + 1):
-            try:
-                return request_builder.execute()
-            except HttpError as e:
-                status_code = int(e.resp.status)
-                if status_code in (429, 500, 503) and attempt < MAX_API_RETRIES:
-                    wait = 2 ** attempt  # 2 s, 4 s
-                    logger.warning(
-                        f"Gmail API error {status_code} — "
-                        f"retry {attempt}/{MAX_API_RETRIES} in {wait}s"
-                    )
-                    sleep(wait)
-                else:
-                    raise
-            except socket.timeout:
-                if attempt < MAX_API_RETRIES:
-                    wait = 2 ** attempt
-                    logger.warning(
-                        f"Gmail API call timed out — "
-                        f"retry {attempt}/{MAX_API_RETRIES} in {wait}s"
-                    )
-                    sleep(wait)
-                else:
-                    raise
+        """Execute a Gmail API request. Raises TransientError on retryable failures
+        so the @with_retry decorator can apply exponential backoff automatically."""
+        try:
+            return request_builder.execute()
+        except HttpError as exc:
+            status_code = int(exc.resp.status)
+            if status_code in (429, 500, 503):
+                raise TransientError(f"Gmail API HTTP {status_code}") from exc
+            if status_code == 401:
+                raise AuthError(f"Gmail API 401 Unauthorized — token may be expired") from exc
+            raise
+        except socket.timeout as exc:
+            raise TransientError("Gmail API socket timeout") from exc
 
     # ------------------------------------------------------------------
     # Email check + process
@@ -381,13 +472,24 @@ class GmailInboxWatcher:
         return "is:unread newer_than:7d"
 
     def check_emails(self) -> list:
-        """Check for unread emails matching filter criteria."""
+        """Check for unread emails matching filter criteria.
+
+        TASK-7.6: Returns [] immediately if the watcher is auth-paused.
+        """
+        # TASK-7.6: Respect auth pause
+        if time.time() < self._auth_paused_until:
+            remaining = int(self._auth_paused_until - time.time())
+            logger.warning(
+                "Gmail auth is paused — skipping check for %ds (token expired). "
+                "Re-authenticate to resume.", remaining
+            )
+            return []
+
         try:
             service = self._get_service()
             query = self._get_filter_query()
             logger.info(f"Checking emails with query: {query}")
 
-            # FIX: Wrapped in retry helper
             results = self._api_call(
                 service.users().messages().list(userId="me", q=query)
             )
@@ -402,8 +504,14 @@ class GmailInboxWatcher:
 
             return new_emails
 
+        except AuthError as e:
+            logger.error("Gmail auth error in check_emails — operations paused: %s", e)
+            return []
+        except TransientError as e:
+            logger.warning("Transient error checking emails (will retry next cycle): %s", e)
+            write_log_alert(f"Gmail check_emails transient failure: {e}", domain="gmail")
+            return []
         except Exception as e:
-            # FIX: logger.exception captures full traceback — not just message
             logger.exception(f"Error checking emails: {e}")
             return []
 
@@ -461,6 +569,13 @@ Body:
 
             self._mark_as_read(msg_id)
 
+        except TransientError as e:
+            # TASK-7.3: Queue for retry on next cycle instead of silently dropping
+            logger.warning("Transient error for email %s — queuing for retry: %s", msg_id[:8], e)
+            write_log_alert(f"Email {msg_id[:8]} queued for retry: {e}", domain="gmail")
+            self._add_to_failed_queue(msg_id)
+        except AuthError as e:
+            logger.error("Auth error processing email %s — pausing watcher: %s", msg_id[:8], e)
         except Exception as e:
             logger.exception(f"Error processing email {msg_id}: {e}")
 
@@ -492,6 +607,9 @@ Body:
 
         try:
             while True:
+                # TASK-7.3: Retry previously queued emails before checking new ones
+                self._process_failed_queue()
+
                 emails = self.check_emails()
 
                 for email in emails:

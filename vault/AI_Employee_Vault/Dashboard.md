@@ -11,7 +11,7 @@ AI Employee: Active
 | Email | Gmail API | Active | ✅ email/ in all stages |
 | WhatsApp | WhatsApp Web | Active | ✅ whatsapp/ in all stages |
 | LinkedIn | Scheduler (09:00) | Active | ✅ linkedin/ in all stages |
-| Odoo | Odoo MCP (TASK-2) | Pending setup | ✅ odoo/ in all stages |
+| Odoo | Odoo MCP (TASK-2) | Active | ✅ odoo/ in all stages |
 | Facebook/Instagram | Social MCP (TASK-3) | Pending setup | ✅ social/ in all stages |
 
 ## Domain Activity Summary
@@ -21,7 +21,7 @@ AI Employee: Active
 | Email | See Recent Activity below | — |
 | WhatsApp | See Recent Activity below | — |
 | LinkedIn | Post published | 2026-05-29 |
-| Odoo | Not yet configured | — |
+| Odoo | Invoices read: 2 records (latest: Test Customer $100.00 draft) | 2026-05-29 |
 | Social | Not yet configured | — |
 
 ## Recent Activity
@@ -547,3 +547,25 @@ AI Employee: Active
 - Post URL: https://www.linkedin.com/feed/?shareActive=true
 - Date: 2026-05-29
 
+
+- [Received] whatsapp_Geo_News_07_54PM.txt - 2026-05-29 19:54:22
+
+| 2026-05-29 19:54:50 | whatsapp | TASK_whatsapp_Geo_News_07_54PM.txt.md | Rejected via dialog |
+
+- [Rejected] whatsapp_Geo_News_07_54PM.txt - 2026-05-29 19:54:57
+
+- [Received] whatsapp_Panaversity_Agentic_AI_Un_08_29PM.txt - 2026-05-29 20:29:43
+
+| 2026-05-29 21:43:16 | whatsapp | TASK_whatsapp_Panaversity_Agentic_AI_Un_08_29PM.txt.md | Rejected via dialog |
+
+- [Rejected] whatsapp_Panaversity_Agentic_AI_Un_08_29PM.txt - 2026-05-29 21:43:30
+
+| Social | Social post published: Facebook: OK | 2026-05-31 |
+
+## Recent Activity
+
+- CEO Briefing generated: 2026-05-31_Monday_Briefing.md
+- Revenue MTD: N/A (Odoo offline) / $5,000 target
+- Tasks completed (all-time): 7
+- Bottlenecks: 0 task(s) open >7 days
+- Date: 2026-05-31

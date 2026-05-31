@@ -5,6 +5,8 @@
     ]
   },
   "enabledMcpjsonServers": [
-    "playwright"
+    "playwright",
+    "odoo",
+    "social"
   ]
 }

@@ -1,0 +1,11 @@
+README.md
+pyproject.toml
+src/social_mcp/__init__.py
+src/social_mcp/__main__.py
+src/social_mcp/server.py
+src/social_mcp.egg-info/PKG-INFO
+src/social_mcp.egg-info/SOURCES.txt
+src/social_mcp.egg-info/dependency_links.txt
+src/social_mcp.egg-info/entry_points.txt
+src/social_mcp.egg-info/requires.txt
+src/social_mcp.egg-info/top_level.txt

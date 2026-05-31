@@ -28,6 +28,13 @@ MAX_RETRIES = 5       # maximum total attempts before a file is fatally rejected
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
+# TASK-7.2: retry utilities
+_WATCHERS_DIR = Path(__file__).parent
+if str(_WATCHERS_DIR) not in sys.path:
+    sys.path.insert(0, str(_WATCHERS_DIR))
+from retry_handler import TransientError, with_retry, write_log_alert  # noqa: E402
+from audit_logger import log_action  # noqa: E402  TASK-8.4
+
 from vault_utils import load_processed, save_processed
 
 # Import LinkedIn executor directly (no Claude spawn)
@@ -38,17 +45,49 @@ except ImportError as e:
     print(f"[WARN] linkedin_executor not available: {e}")
     LINKEDIN_EXECUTOR_AVAILABLE = False
 
+# Import Odoo executor directly (no Claude spawn)
+try:
+    from odoo_executor import run_odoo_task
+    ODOO_EXECUTOR_AVAILABLE = True
+except ImportError as e:
+    print(f"[WARN] odoo_executor not available: {e}")
+    ODOO_EXECUTOR_AVAILABLE = False
+
+# Import Social executor directly (no Claude spawn)
+try:
+    from facebook_instagram_executor import run_social_post
+    SOCIAL_EXECUTOR_AVAILABLE = True
+except ImportError as e:
+    print(f"[WARN] facebook_instagram_executor not available: {e}")
+    SOCIAL_EXECUTOR_AVAILABLE = False
+
 
 SEND_EMAIL_EXECUTOR     = ROOT / ".claude" / "commands" / "send_email_executor.py"
 PROCESS_APPROVED_EXECUTOR = ROOT / ".claude" / "commands" / "process_approved_executor.py"
 
 
-def _mcp_is_reachable(url: str = "http://localhost:8001/health", timeout: int = 3) -> bool:
-    """Return True if the MCP server responds to a health check."""
+@with_retry(
+    max_attempts=3,
+    base_delay=1.0,
+    max_delay=60.0,
+    retryable=(TransientError,),
+    log_domain="approved_watcher",
+)
+def _mcp_health_check(url: str = "http://localhost:8001/health", timeout: int = 3) -> bool:
+    """Return True if the MCP server responds OK; raise TransientError on failure."""
     try:
         with urllib.request.urlopen(url, timeout=timeout) as resp:
             return resp.status < 500
-    except Exception:
+    except (urllib.error.URLError, OSError) as exc:
+        raise TransientError(f"MCP health check failed: {exc}") from exc
+
+
+def _mcp_is_reachable(url: str = "http://localhost:8001/health", timeout: int = 3) -> bool:
+    """Return True if the MCP server responds to a health check (with retry)."""
+    try:
+        return _mcp_health_check(url, timeout)
+    except TransientError:
+        write_log_alert("Email MCP server unreachable after 3 attempts", domain="approved_watcher")
         return False
 
 
@@ -108,8 +147,24 @@ def run_linkedin_file(file_path: Path) -> None:
             print("[WATCHER] SUCCESS")
         else:
             print("[WATCHER] FAILED")
+        log_action(  # TASK-8.4
+            action_type="linkedin_post_published",
+            actor="approved_watcher",
+            target=file_path.name,
+            approval_status="approved",
+            approved_by="human",
+            result="success" if result else "failed",
+        )
     except Exception as e:
         print(f"[ERROR] LinkedIn executor failed: {e}")
+        log_action(  # TASK-8.4
+            action_type="linkedin_post_published",
+            actor="approved_watcher",
+            target=file_path.name,
+            approval_status="approved",
+            approved_by="human",
+            result=f"error: {e}",
+        )
         # File stays in Approved/ for retry
 
 
@@ -301,6 +356,20 @@ def watch():
                     if file_type == "linkedin":
                         # LinkedIn: Use direct Python executor (no Claude spawn)
                         run_linkedin_file(file_path)
+
+                    elif file_type == "odoo":
+                        # Odoo: Use direct Python executor (no Claude spawn)
+                        if ODOO_EXECUTOR_AVAILABLE:
+                            run_odoo_task(file_path)
+                        else:
+                            print(f"[ERROR] odoo_executor not available — cannot process {file_path.name}")
+
+                    elif file_type == "social":
+                        # Social (Facebook/Instagram): Use direct Python executor (no Claude spawn)
+                        if SOCIAL_EXECUTOR_AVAILABLE:
+                            run_social_post(file_path)
+                        else:
+                            print(f"[ERROR] facebook_instagram_executor not available — cannot process {file_path.name}")
 
                 except Exception as e:
                     print(f"[ERROR] Unhandled exception for {name}: {e}")

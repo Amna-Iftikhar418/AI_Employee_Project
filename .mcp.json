@@ -1,13 +1,60 @@
 {
   "mcpServers": {
+    "browser": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "--directory",
+        "mcp_servers/browser_mcp",
+        "run",
+        "browser-mcp"
+      ],
+      "env": {
+        "BROWSER_HEADLESS": "true",
+        "BROWSER_TIMEOUT": "30000"
+      }
+    },
+    "social": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "--directory",
+        "mcp_servers/social_mcp",
+        "run",
+        "social-mcp"
+      ],
+      "env": {
+        "META_PAGE_ACCESS_TOKEN": "${META_PAGE_ACCESS_TOKEN}",
+        "META_PAGE_ID": "${META_PAGE_ID}",
+        "META_IG_USER_ID": "${META_IG_USER_ID}",
+        "META_GRAPH_API_VERSION": "v21.0"
+      }
+    },
     "playwright": {
       "type": "stdio",
       "command": "npx",
       "args": [
         "@playwright/mcp@latest",
         "--user-data-dir",
-        "C:\\Users\\LAPTOP VILLA\\.playwright-profiles\\ai-employee"
+        "C:\Users\LAPTOP VILLA\.playwright-profiles\ai-employee"
       ]
+    },
+    "odoo": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "--directory",
+        "mcp_servers/odoo_mcp",
+        "run",
+        "odoo-mcp"
+      ],
+      "env": {
+        "ODOO_URL": "http://localhost:8069",
+        "ODOO_DB": "odoo",
+        "ODOO_USERNAME": "admin",
+        "ODOO_PASSWORD": "admin",
+        "ODOO_API_VERSION": "json-rpc"
+      }
     }
   }
 }
