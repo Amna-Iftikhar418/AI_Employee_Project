@@ -29,7 +29,7 @@ function pendingCount(matrix: DomainMatrix[], domain: string) {
   return (row?.stages['Pending_Approval']?.count ?? 0) + (row?.stages['Needs_Action']?.count ?? 0);
 }
 
-const DECK_TOP = 122;
+const DECK_TOP = 0;
 const CARD_H   = 140;
 
 export default function TaskCountsCarousel() {
@@ -51,7 +51,7 @@ export default function TaskCountsCarousel() {
   const pending = domain ? pendingCount(matrix, domain.key) : 0;
 
   return (
-    <div className="flex flex-col items-center py-4 select-none">
+    <div className="flex flex-col items-start select-none">
       {/* ── Deck — stack never moves, only top card content fades ── */}
       <div
         className="relative cursor-pointer"
@@ -137,7 +137,7 @@ export default function TaskCountsCarousel() {
               </div>
             ) : (
               /* Active: KPI data */
-              <div className="h-full flex items-center gap-4 px-5">
+              <div className="h-full relative flex items-center gap-4 px-5 pb-8">
                 {/* Left colour stripe */}
                 <div
                   className="absolute left-0 top-0 bottom-0 w-[4px] rounded-l-2xl"
@@ -160,30 +160,28 @@ export default function TaskCountsCarousel() {
                     {pending > 0 ? `${pending} pending` : 'Up to date'}
                   </p>
                 </div>
+                {/* Progress dots — inside card, bottom center */}
+                <div className="absolute bottom-2.5 left-0 right-0 flex flex-col items-center gap-0.5">
+                  <div className="flex gap-1.5">
+                    {DOMAINS.map((_, i) => (
+                      <div
+                        key={i}
+                        className={`rounded-full transition-all duration-300 ${
+                          i === currentIndex ? 'w-3 h-1.5 bg-[#86b9b0]' : 'w-1.5 h-1.5 bg-[#4c7273]/35'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-[9px] text-[#4c7273]">
+                    {currentIndex + 1} / {DOMAINS.length} · click for next
+                  </p>
+                </div>
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Progress dots */}
-      {currentIndex >= 0 && (
-        <div className="mt-4 flex flex-col items-center gap-2">
-          <div className="flex gap-2">
-            {DOMAINS.map((_, i) => (
-              <div
-                key={i}
-                className={`rounded-full transition-all duration-300 ${
-                  i === currentIndex ? 'w-4 h-2 bg-[#86b9b0]' : 'w-2 h-2 bg-[#4c7273]/40'
-                }`}
-              />
-            ))}
-          </div>
-          <p className="text-xs text-[#4c7273]">
-            {currentIndex + 1} / {DOMAINS.length} · click for next →
-          </p>
-        </div>
-      )}
     </div>
   );
 }
