@@ -1,14 +1,34 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Mail, MessageCircle, Share2, Building2, Globe, CalendarDays, Camera, CheckCircle2, WifiOff,
+  Mail, MessageCircle, Share2, Building2, Globe, CalendarDays, Camera, CheckCircle2, WifiOff, X, Activity,
 } from 'lucide-react';
 import KpiCard from '@/components/KpiCard';
 import DomainStatusGrid from '@/components/DomainStatusGrid';
 import ActivityFeed from '@/components/ActivityFeed';
 import TiltCard from '@/components/three/TiltCard';
 import { fetchTasks, fetchHealth, DomainMatrix } from '@/lib/api';
+
+// ── activity persistence ──────────────────────────────────────────────────────
+
+const LS_ACTIVITY_SHOWN   = 'dashboard_activity_shown';
+const LS_ACTIVITY_CLEARED = 'dashboard_activity_cleared_date';
+
+function todayStr(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function loadActivityShown(): boolean {
+  if (typeof window === 'undefined') return false;
+  try { return localStorage.getItem(LS_ACTIVITY_SHOWN) === 'true'; } catch { return false; }
+}
+
+function loadActivityCleared(): boolean {
+  if (typeof window === 'undefined') return false;
+  try { return localStorage.getItem(LS_ACTIVITY_CLEARED) === todayStr(); } catch { return false; }
+}
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -112,6 +132,28 @@ function HealthChip() {
 // ── page ──────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
+  const [showActivity, setShowActivity] = useState(false);
+  const [activityCleared, setActivityCleared] = useState(false);
+
+  useEffect(() => {
+    const cleared = loadActivityCleared();
+    const shown = loadActivityShown();
+    setActivityCleared(cleared);
+    setShowActivity(shown && !cleared);
+  }, []);
+
+  const handleShow = () => {
+    localStorage.setItem(LS_ACTIVITY_SHOWN, 'true');
+    setShowActivity(true);
+  };
+
+  const handleRemove = () => {
+    localStorage.setItem(LS_ACTIVITY_CLEARED, todayStr());
+    localStorage.setItem(LS_ACTIVITY_SHOWN, 'false');
+    setShowActivity(false);
+    setActivityCleared(true);
+  };
+
   return (
     <div className="p-6 max-w-7xl mx-auto min-h-screen bg-[#041421]">
 
@@ -154,14 +196,41 @@ export default function DashboardPage() {
           </section>
         </div>
 
-        {/* Activity feed — full width */}
-        <div className="col-span-12">
-          <section aria-label="Recent activity">
-            <SectionLabel>Today&apos;s Activity</SectionLabel>
-            <div className="bg-[#042630] rounded-2xl border border-[#4c7273]/25 p-5">
-              <ActivityFeed />
+        {/* Activity toggle */}
+        <div className="col-span-12 flex flex-col items-center py-8 gap-6">
+          {!showActivity && (
+            <button
+              onClick={handleShow}
+              aria-label="Show today's activity"
+              style={{ animation: 'wave-float 2.2s ease-in-out infinite' }}
+              className="inline-flex items-center gap-3 px-8 py-4 rounded-full bg-[#042630] border border-[#4c7273]/50 text-[#86b9b0] font-semibold text-sm tracking-wide cursor-pointer hover:border-[#86b9b0] hover:shadow-[0_0_28px_rgba(134,185,176,0.4)] transition-colors duration-200 select-none"
+            >
+              <Activity className="w-4 h-4" />
+              Today&apos;s Activity
+            </button>
+          )}
+
+          {showActivity && (
+            <div className="w-full">
+              <div className="flex items-center gap-3 mb-4">
+                <span className="text-[11px] font-bold tracking-[0.18em] uppercase text-[#4c7273] shrink-0">
+                  Today&apos;s Activity
+                </span>
+                <div className="flex-1 h-px bg-[#4c7273]/20" />
+                <button
+                  onClick={handleRemove}
+                  aria-label="Remove today's activity"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-rose-500/15 border border-rose-500/40 text-rose-400 text-xs font-semibold hover:bg-rose-500/30 hover:border-rose-500/70 transition-colors duration-150 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  Remove
+                </button>
+              </div>
+              <div className="bg-[#042630] rounded-2xl border border-[#4c7273]/25 p-5">
+                <ActivityFeed cleared={activityCleared} />
+              </div>
             </div>
-          </section>
+          )}
         </div>
 
       </div>

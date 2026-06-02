@@ -27,10 +27,8 @@ const DEFAULT_TABS: CustomTab[] = [
   { key: 'rejected', label: 'Rejected', matchFn: (f) => f.stage.toLowerCase() === 'rejected' },
 ];
 
-const DELETABLE_STAGES = new Set(['done', 'rejected']);
-
-function isDeletable(stage: string) {
-  return DELETABLE_STAGES.has(stage.toLowerCase());
+function isDeletable(_stage: string) {
+  return true;
 }
 
 function stageBadgeStyle(stage: string): React.CSSProperties {
@@ -99,7 +97,7 @@ function DeleteCell({ file, onDeleted }: DeleteCellProps) {
     <td className="px-4 py-3 w-10" onClick={(e) => e.stopPropagation()}>
       <button
         onClick={(e) => { e.stopPropagation(); setConfirming(true); }}
-        className="w-7 h-7 flex items-center justify-center rounded hover:bg-rose-500/10 text-slate-600 hover:text-rose-400 transition-colors opacity-0 group-hover:opacity-100"
+        className="w-7 h-7 flex items-center justify-center rounded hover:bg-rose-500/10 text-slate-500 hover:text-rose-400 transition-colors"
         aria-label={`Delete ${file.filename}`}
       >
         <Trash2 className="w-3.5 h-3.5" />

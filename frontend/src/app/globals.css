@@ -176,6 +176,25 @@ body {
   animation: accent-pulse 2s ease-in-out infinite;
 }
 
+/* ── Wave float animation for activity toggle button ─────────── */
+@keyframes wave-float {
+  0%, 100% { transform: translateY(0px);    }
+  50%       { transform: translateY(-10px);  }
+}
+
+.wave-float {
+  animation: wave-float 2.4s ease-in-out infinite;
+}
+
+@keyframes wave-glow-pulse {
+  0%, 100% { box-shadow: 0 0 18px rgba(134, 185, 176, 0.25); }
+  50%       { box-shadow: 0 0 38px rgba(134, 185, 176, 0.55); }
+}
+
+.wave-glow {
+  animation: wave-glow-pulse 2.4s ease-in-out infinite;
+}
+
 /* ── Scrollbar ───────────────────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 6px;

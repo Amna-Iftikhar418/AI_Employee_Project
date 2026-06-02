@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useQueries } from '@tanstack/react-query';
-import { CalendarDays, Share2, FileText, Trash2, Clock } from 'lucide-react';
+import { CalendarDays, Share2, FileText, Trash2, Clock, X } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
 import TriggerButton from '@/components/TriggerButton';
 import { fetchLogs, LogEntry } from '@/lib/api';
@@ -12,6 +12,25 @@ import { cn } from '@/lib/utils';
 // ── persisted disabled jobs ───────────────────────────────────────────────────
 
 const LS_KEY = 'scheduler_disabled_jobs';
+const LS_HISTORY_CLEARED = 'scheduler_history_cleared_date';
+
+function todayStr(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function loadHistoryCleared(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return localStorage.getItem(LS_HISTORY_CLEARED) === todayStr();
+  } catch {
+    return false;
+  }
+}
+
+function saveHistoryCleared(): void {
+  localStorage.setItem(LS_HISTORY_CLEARED, todayStr());
+}
+
 
 function loadDisabled(): Set<string> {
   if (typeof window === 'undefined') return new Set();
@@ -285,7 +304,7 @@ function lastNDates(n: number): string[] {
   });
 }
 
-function SchedulerHistory() {
+function SchedulerHistory({ cleared = false }: { cleared?: boolean }) {
   const dates = lastNDates(7);
 
   const results = useQueries({
@@ -309,7 +328,9 @@ function SchedulerHistory() {
     return b.time.localeCompare(a.time);
   });
 
-  if (allEntries.length === 0) {
+  const visible = cleared ? [] : allEntries;
+
+  if (visible.length === 0) {
     return (
       <div className="rounded-xl border border-[#4c7273]/30 bg-[#042630] p-8 flex flex-col items-center gap-3 text-center">
         <Clock className="w-8 h-8 text-[#4c7273]" />
@@ -320,7 +341,7 @@ function SchedulerHistory() {
 
   return (
     <div className="space-y-0.5 max-h-96 overflow-y-auto rounded-xl border border-[#4c7273]/30 bg-[#041421] p-3">
-      {allEntries.map((entry, i) => {
+      {visible.map((entry, i) => {
         const color = DOMAIN_COLORS[entry.domain] ?? DOMAIN_COLORS['scheduler'];
         const dt = new Date(`${entry.date}T${entry.time}`);
         return (
@@ -363,10 +384,17 @@ function SchedulerHistory() {
 
 export default function SchedulerPage() {
   const [disabledJobs, setDisabledJobs] = useState<Set<string>>(new Set());
+  const [historyCleared, setHistoryCleared] = useState(false);
 
   useEffect(() => {
     setDisabledJobs(loadDisabled());
+    setHistoryCleared(loadHistoryCleared());
   }, []);
+
+  const handleClearHistory = () => {
+    saveHistoryCleared();
+    setHistoryCleared(true);
+  };
 
   const handleToggle = (action: string) => {
     setDisabledJobs((prev) => {
@@ -410,10 +438,23 @@ export default function SchedulerPage() {
 
       {/* Scheduler history */}
       <section aria-label="Scheduler history">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-[#4c7273] mb-3">
-          Activity — Last 7 Days
-        </h2>
-        <SchedulerHistory />
+        <div className="flex items-center gap-3 mb-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-[#4c7273] shrink-0">
+            Activity — Last 7 Days
+          </h2>
+          <div className="flex-1 h-px bg-[#4c7273]/20" />
+          {!historyCleared && (
+            <button
+              onClick={handleClearHistory}
+              aria-label="Clear activity history"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-rose-500/15 border border-rose-500/40 text-rose-400 text-xs font-semibold hover:bg-rose-500/30 hover:border-rose-500/70 transition-colors duration-150 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+              Clean Up
+            </button>
+          )}
+        </div>
+        <SchedulerHistory cleared={historyCleared} />
       </section>
     </div>
   );

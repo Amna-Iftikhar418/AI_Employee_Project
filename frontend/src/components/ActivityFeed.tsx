@@ -11,14 +11,14 @@ function entryDate(time: string): Date {
   return new Date(today.getFullYear(), today.getMonth(), today.getDate(), h, m, s);
 }
 
-export default function ActivityFeed() {
+export default function ActivityFeed({ cleared = false }: { cleared?: boolean }) {
   const { data: entries = [] } = useQuery({
     queryKey: ['logs', 'today'],
     queryFn: () => fetchLogs(),
     refetchInterval: 30_000,
   });
 
-  const recent = [...entries].reverse().slice(0, 50);
+  const recent = cleared ? [] : [...entries].reverse().slice(0, 50);
 
   if (recent.length === 0) {
     return (

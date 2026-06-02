@@ -133,17 +133,46 @@ class WhatsAppInboxWatcher(BaseWatcher):
     # BaseWatcher interface
     # ------------------------------------------------------------------
 
+    _PIPELINE_STAGES = [
+        "Needs_Action", "Plans", "Pending_Approval", "Approved", "Done", "Rejected"
+    ]
+
+    def _task_exists_in_pipeline(self, inbox_filename: str) -> bool:
+        """Return True if the TASK file for this inbox file exists anywhere in the pipeline."""
+        task_name = f"TASK_{inbox_filename}.md"
+        return any(
+            (self.vault_path / stage / "whatsapp" / task_name).exists()
+            for stage in self._PIPELINE_STAGES
+        )
+
     def check_for_updates(self) -> list:
-        """Return *.txt files in Inbox/whatsapp/ not yet processed."""
+        """Return *.txt files in Inbox/whatsapp/ that need a TASK file created.
+
+        Uses pipeline-wide TASK existence as the source of truth instead of
+        relying solely on the processed set.  This prevents inbox files from
+        getting permanently stuck when their TASK file is deleted or moved to
+        Done/Rejected without the inbox file being archived.
+        """
         new_files = []
         for file in self.inbox.glob("*.txt"):
             if file.is_dir():
                 continue
-            if file.name in self._processed:
+            if self._task_exists_in_pipeline(file.name):
+                # Ensure it is recorded as processed so future runs skip it quickly
+                if file.name not in self._processed:
+                    self._save_processed(file.name)
                 continue
-            task_file = self.needs_action / "whatsapp" / f"TASK_{file.name}.md"
-            if not task_file.exists():
-                new_files.append(file)
+            # TASK missing — process (or re-process) this inbox file
+            if file.name in self._processed:
+                # TASK was lost; clear the stale processed flag so create_action_file
+                # can mark it again after successfully writing the new TASK.
+                self._processed.discard(file.name)
+                save_processed(self._processed_file, self._processed)
+                self.logger.info(
+                    f"[whatsapp] Stale processed entry removed for {file.name} "
+                    "(TASK not found in pipeline — will reprocess)"
+                )
+            new_files.append(file)
         return new_files
 
     def create_action_file(self, file_path: Path):
