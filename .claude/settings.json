@@ -23,6 +23,32 @@
       "mcp__playwright__browser_run_code",
       "mcp__playwright__browser_navigate_back",
       "mcp__playwright__browser_install",
+      "mcp__browser__browser_navigate",
+      "mcp__browser__browser_get_content",
+      "mcp__browser__browser_click",
+      "mcp__browser__browser_fill_field",
+      "mcp__browser__browser_screenshot",
+      "mcp__browser__browser_check_element",
+      "mcp__browser__browser_get_text",
+      "mcp__browser__browser_select_option",
+      "mcp__browser__browser_close_session",
+      "mcp__browser__browser_back",
+      "mcp__browser__browser_forward",
+      "mcp__browser__browser_reload",
+      "mcp__browser__browser_press_key",
+      "mcp__browser__browser_type",
+      "mcp__browser__browser_hover",
+      "mcp__browser__browser_scroll",
+      "mcp__browser__browser_wait_for",
+      "mcp__browser__browser_set_checkbox",
+      "mcp__browser__browser_get_attribute",
+      "mcp__browser__browser_evaluate",
+      "mcp__browser__browser_get_links",
+      "mcp__browser__browser_upload_file",
+      "mcp__browser__browser_handle_dialog",
+      "mcp__browser__browser_list_tabs",
+      "mcp__browser__browser_switch_tab",
+      "mcp__browser__browser_new_tab",
       "Bash(uv run watchers/*)",
       "Bash(uv run mcp_server.py)",
       "Bash(*)",
@@ -52,7 +78,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python .claude/hooks/stop_hook.py"
+            "command": "python C:\\Project\\AI_Employee_Project\\.claude\\hooks\\stop_hook.py"
           }
         ]
       }

@@ -160,8 +160,8 @@ class GmailInboxWatcher:
         FIX: write-to-temp + os.replace() — crash-safe, no half-written files.
         FIX: Acquired under lock to prevent concurrent writes from two processes.
         """
-        self.processed_ids.add(email_id)
         with self._lock:
+            self.processed_ids.add(email_id)
             try:
                 data = {"processed_ids": list(self.processed_ids)}
                 tmp = self.processed_file.with_suffix(".tmp")
@@ -348,6 +348,8 @@ class GmailInboxWatcher:
     # Email body extraction
     # ------------------------------------------------------------------
 
+    _MAX_BODY_BYTES = 500_000  # 500 KB — guard against huge emails
+
     def _extract_body(self, payload: dict) -> str:
         """Extract readable body from email payload.
 
@@ -356,12 +358,19 @@ class GmailInboxWatcher:
         """
         plain = self._extract_mime(payload, "text/plain")
         if plain:
+            if len(plain.encode("utf-8")) > self._MAX_BODY_BYTES:
+                plain = plain.encode("utf-8")[:self._MAX_BODY_BYTES].decode("utf-8", errors="ignore")
+                plain += "\n\n[... body truncated — email exceeded size limit ...]"
             return plain
 
         # FIX: Fallback to HTML extraction
         html = self._extract_mime(payload, "text/html")
         if html:
-            return self._html_to_text(html)
+            body = self._html_to_text(html)
+            if len(body.encode("utf-8")) > self._MAX_BODY_BYTES:
+                body = body.encode("utf-8")[:self._MAX_BODY_BYTES].decode("utf-8", errors="ignore")
+                body += "\n\n[... body truncated — email exceeded size limit ...]"
+            return body
 
         return "[No content found]"
 

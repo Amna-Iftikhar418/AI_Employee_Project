@@ -28,7 +28,7 @@ VAULT = ROOT / "vault" / "AI_Employee_Vault"
 _WATCHERS_DIR = ROOT / "watchers"
 if str(_WATCHERS_DIR) not in sys.path:
     sys.path.insert(0, str(_WATCHERS_DIR))
-from retry_handler import TransientError, with_retry, write_log_alert  # noqa: E402
+from retry_handler import AuthError, TransientError, with_retry, write_log_alert  # noqa: E402
 from audit_logger import log_action  # noqa: E402  TASK-8.4
 
 GRAPH_BASE          = "https://graph.facebook.com"
@@ -36,6 +36,20 @@ META_API_VERSION    = os.getenv("META_GRAPH_API_VERSION", "v21.0")
 META_PAGE_TOKEN     = os.getenv("META_PAGE_ACCESS_TOKEN", "")
 META_PAGE_ID        = os.getenv("META_PAGE_ID", "")
 META_IG_USER_ID     = os.getenv("META_IG_USER_ID", "")
+
+_missing = [n for n, v in [
+    ("META_PAGE_ACCESS_TOKEN", META_PAGE_TOKEN),
+    ("META_PAGE_ID", META_PAGE_ID),
+    ("META_IG_USER_ID", META_IG_USER_ID),
+] if not v]
+if _missing:
+    import warnings
+    warnings.warn(
+        f"Social executor: missing env vars {_missing} — "
+        "Facebook/Instagram posts will fail until these are set in .env",
+        RuntimeWarning,
+        stacklevel=1,
+    )
 
 APPROVED_SOCIAL = VAULT / "Approved" / "social"
 
@@ -55,6 +69,29 @@ def _assert_in_approved(file_path: Path) -> None:
 
 def _graph_url(path: str) -> str:
     return f"{GRAPH_BASE}/{META_API_VERSION}/{path}"
+
+
+def _validate_token() -> dict:
+    """
+    Validate the Meta Page access token before attempting to publish.
+    Returns {"valid": bool, "error": str}. Catches the common case of an
+    expired/short-lived token so we surface a clear, actionable message
+    instead of a cryptic per-post API error.
+    """
+    if not META_PAGE_TOKEN:
+        return {"valid": False, "error": "META_PAGE_ACCESS_TOKEN not set in .env"}
+    try:
+        resp = requests.get(
+            _graph_url("me"),
+            params={"access_token": META_PAGE_TOKEN, "fields": "id,name"},
+            timeout=15,
+        )
+        data = resp.json()
+    except Exception as exc:
+        return {"valid": False, "error": f"token validation request failed: {exc}"}
+    if "error" in data:
+        return {"valid": False, "error": data["error"].get("message", "invalid token")}
+    return {"valid": True, "error": ""}
 
 
 def _read_frontmatter(path: Path) -> dict:
@@ -225,6 +262,22 @@ def run_social_post(file_path: Path) -> bool:
         _append_log(f"SOCIAL_POST: FAILED — no message content in {file_path.name}")
         return False
 
+    # Validate the Page access token up-front so an expired/short-lived token
+    # produces one clear alert instead of failing silently per platform.
+    token_check = _validate_token()
+    if not token_check["valid"]:
+        msg = (
+            f"META TOKEN INVALID — {token_check['error']} — regenerate a "
+            f"long-lived Page access token and update META_PAGE_ACCESS_TOKEN in .env"
+        )
+        print(f"[SOCIAL] {msg}")
+        _append_log(f"SOCIAL_POST: FAILED — {msg}")
+        write_log_alert(msg, domain="social")
+        # Raise AuthError (not a plain failure): the file stays in Approved/ and the
+        # watcher must NOT count this toward MAX_RETRIES — a dead token is not the
+        # post's fault, so it should never cause a false rejection.
+        raise AuthError(msg)
+
     results = []
 
     # ── Facebook ──────────────────────────────────────────────────────────────
@@ -277,8 +330,26 @@ def run_social_post(file_path: Path) -> bool:
             )
 
     summary = " | ".join(results) if results else "No platforms processed"
+    any_ok = any("OK" in r for r in results)
 
-    # Move to Done/social/
+    # Only move to Done/ when at least one platform actually published.
+    # On failure, leave the file in Approved/ so approved_watcher.py retries it
+    # (and eventually routes it to Rejected/ after MAX_RETRIES). This prevents
+    # failed posts from being falsely marked complete in Done/.
+    if not any_ok:
+        print(f"[SOCIAL] NOT published — {summary} — leaving file in Approved/ for retry")
+        _append_log(f"SOCIAL_POST: NOT published — {summary} — file left in Approved/ for retry")
+        return False
+
+    # Mark the file as completed before moving it to Done/social/.
+    try:
+        updated = re.sub(r"^status:\s*.+$", "status: completed", content, flags=re.MULTILINE)
+        if "published_at:" not in updated:
+            updated = updated.replace("---\n", f"---\npublished_at: {datetime.now().isoformat()}\n", 1)
+        file_path.write_text(updated, encoding="utf-8")
+    except Exception as exc:
+        print(f"[WARN] Could not update status frontmatter: {exc}")
+
     done_dir = VAULT / "Done" / "social"
     done_dir.mkdir(parents=True, exist_ok=True)
     dest = done_dir / file_path.name
@@ -287,6 +358,4 @@ def run_social_post(file_path: Path) -> bool:
 
     _update_dashboard(f"Social post published: {summary}")
     print(f"[SOCIAL] Done. Results: {summary}")
-
-    # Return True if at least one platform succeeded
-    return any("OK" in r for r in results) or not results
+    return True

@@ -32,7 +32,7 @@ logger = logging.getLogger("TaskProcessor")
 
 class TaskProcessor:
     def __init__(self):
-        self.vault_path = Path("vault/AI_Employee_Vault")
+        self.vault_path = Path(__file__).parent.parent / "vault" / "AI_Employee_Vault"
 
         self.needs_action_dir = self.vault_path / "Needs_Action"
         self.plans_dir = self.vault_path / "Plans"
@@ -76,37 +76,63 @@ class TaskProcessor:
         self.social_rejected     = self.rejected_dir / "social"
         self.social_done         = self.done_dir / "social"
 
+        # Browser domain
+        self.browser_needs_action = self.needs_action_dir / "browser"
+        self.browser_plans        = self.plans_dir / "browser"
+        self.browser_pending      = self.pending_approval_dir / "browser"
+        self.browser_approved     = self.approved_dir / "browser"
+        self.browser_rejected     = self.rejected_dir / "browser"
+        self.browser_done         = self.done_dir / "browser"
+
+        # LinkedIn domain
+        self.linkedin_needs_action = self.needs_action_dir / "linkedin"
+        self.linkedin_done         = self.done_dir / "linkedin"
+
+        # Scheduler domain — manual triggers from dashboard
+        self.scheduler_needs_action = self.needs_action_dir / "scheduler"
+        self.scheduler_done         = self.done_dir / "scheduler"
+
         for folder in [
             self.needs_action_dir,
             self.email_needs_action,
             self.whatsapp_needs_action,
             self.odoo_needs_action,
             self.social_needs_action,
+            self.browser_needs_action,
             self.plans_dir,
             self.email_plans,
             self.whatsapp_plans,
             self.odoo_plans,
             self.social_plans,
+            self.browser_plans,
             self.pending_approval_dir,
             self.email_pending,
             self.whatsapp_pending,
             self.odoo_pending,
             self.social_pending,
+            self.browser_pending,
             self.approved_dir,
             self.email_approved,
             self.whatsapp_approved,
             self.odoo_approved,
             self.social_approved,
+            self.browser_approved,
             self.rejected_dir,
             self.email_rejected,
             self.whatsapp_rejected,
             self.odoo_rejected,
             self.social_rejected,
+            self.browser_rejected,
             self.done_dir,
             self.email_done,
             self.whatsapp_done,
             self.odoo_done,
             self.social_done,
+            self.browser_done,
+            self.linkedin_needs_action,
+            self.linkedin_done,
+            self.scheduler_needs_action,
+            self.scheduler_done,
             self.logs_dir,
             self.inbox_dir,
         ]:
@@ -189,23 +215,31 @@ class TaskProcessor:
         domain_tag = f"[{domain}] " if domain else ""
         append_log(self.logs_dir, f"[{timestamp}] {domain_tag}{action}: {task_name} - {details}")
 
-    def run_claude_skill(self, skill_name: str, file_path: Path):
+    def run_claude_skill(self, skill_name: str, file_path: Path, prompt: str = ""):
         """Invoke a Claude skill headlessly via the CLI."""
+        import shutil
         try:
-            prompt = (
-                f"Run the {skill_name} skill on this file:\n\n"
-                f"{file_path}\n\n"
-                "Follow all project instructions and update the plan if needed."
-            )
-            subprocess.run(
-                ["claude", "-p", prompt, "--allowedTools", "all"],
+            if not prompt:
+                prompt = (
+                    f"Run the {skill_name} skill on this file:\n\n"
+                    f"{file_path}\n\n"
+                    "Follow all project instructions and update the plan if needed."
+                )
+            # On Windows, npm installs claude as claude.cmd — shutil.which resolves it
+            claude_exe = shutil.which("claude") or "claude"
+            result = subprocess.run(
+                [claude_exe, "-p", prompt, "--allowedTools", "all"],
                 cwd=str(Path(__file__).parent.parent),
                 capture_output=True,
                 text=True,
                 timeout=300,
                 shell=False,
             )
-            logger.info(f"Claude skill executed: {skill_name} for {file_path.name}")
+            logger.info(f"Claude skill executed: {skill_name} (exit={result.returncode})")
+            if result.stdout:
+                logger.info(f"Claude stdout: {result.stdout[:500]}")
+            if result.stderr:
+                logger.warning(f"Claude stderr: {result.stderr[:500]}")
         except Exception as e:
             logger.error(f"Failed to run Claude skill {skill_name}: {e}")
 
@@ -442,6 +476,126 @@ pending
 
         plan_path.write_text(plan_content, encoding="utf-8")
         logger.info(f"WhatsApp plan generated: {plan_path.name}")
+
+    def _generate_social_post(self, platform: str | None = None):
+        """Generate SOCIAL_POST_*.md drafts.
+
+        platform: "facebook" or "instagram" generates only that platform's
+        draft. None (default) generates both — used by schedulers / back-compat.
+        """
+        platform = (platform or "").strip().lower() or None
+        want_fb = platform in (None, "facebook")
+        want_ig = platform in (None, "instagram")
+        now = datetime.now()
+        ts = now.strftime("%Y%m%d_%H%M%S")
+        created = now.isoformat()
+
+        facebook_message = (
+            "🚀 Exciting news! Our AI Employee system is transforming how businesses operate.\n\n"
+            "Imagine having an intelligent assistant that:\n"
+            "✅ Processes your emails automatically\n"
+            "✅ Handles WhatsApp messages 24/7\n"
+            "✅ Manages your LinkedIn presence\n"
+            "✅ Integrates with your business systems\n\n"
+            "All with human approval built in — you stay in control while AI handles the routine.\n\n"
+            "Ready to supercharge your productivity? Let's talk!\n\n"
+            "#AIEmployee #BusinessAutomation #Productivity #AI #DigitalTransformation"
+        )
+
+        instagram_caption = (
+            "🤖 AI Employee — your business on autopilot!\n\n"
+            "From emails to WhatsApp, LinkedIn to invoicing — "
+            "our AI handles it all while keeping YOU in control.\n\n"
+            "Human approval built in. Maximum productivity. Zero micromanagement.\n\n"
+            "#AIEmployee #BusinessAutomation #AI #Productivity #SmartBusiness "
+            "#DigitalTransformation #Tech #Innovation #Entrepreneur #BusinessGrowth"
+        )
+
+        def _yaml_block(text: str) -> str:
+            return "|\n" + "\n".join("  " + line for line in text.splitlines())
+
+        plats_label = ", ".join(
+            p for p, want in (("facebook", want_fb), ("instagram", want_ig)) if want
+        )
+
+        # ── Facebook post file ────────────────────────────────────────
+        if want_fb:
+            fb_content = f"""---
+type: social_post
+platforms: "facebook"
+message: {_yaml_block(facebook_message)}
+image_url: ""
+link: ""
+created: "{created}"
+status: pending
+---
+
+# Facebook Post Draft — {now.strftime("%Y-%m-%d %H:%M")}
+
+## Post Preview
+
+{facebook_message}
+
+## Notes
+- Edit the message above before approving
+- Optionally add an image_url or link
+- Approve on the /social page
+"""
+            fb_path = self.social_pending / f"SOCIAL_POST_FB_{ts}.md"
+            fb_path.write_text(fb_content, encoding="utf-8")
+            logger.info(f"Facebook post created: {fb_path.name}")
+
+        # ── Instagram post file ───────────────────────────────────────
+        if want_ig:
+            ig_content = f"""---
+type: social_post
+platforms: "instagram"
+caption: {_yaml_block(instagram_caption)}
+image_url: ""
+created: "{created}"
+status: pending
+---
+
+# Instagram Post Draft — {now.strftime("%Y-%m-%d %H:%M")}
+
+## Post Preview
+
+{instagram_caption}
+
+## Notes
+- Edit the caption above before approving
+- Add an image_url (required for Instagram posting)
+- Approve on the /social page
+"""
+            ig_path = self.social_pending / f"SOCIAL_POST_IG_{ts}.md"
+            ig_path.write_text(ig_content, encoding="utf-8")
+            logger.info(f"Instagram post created: {ig_path.name}")
+
+        # ── Plan file ─────────────────────────────────────────────────
+        plan_actions = ""
+        if want_fb:
+            plan_actions += f"- [x] Generate Facebook post content → SOCIAL_POST_FB_{ts}.md\n"
+        if want_ig:
+            plan_actions += f"- [x] Generate Instagram post content → SOCIAL_POST_IG_{ts}.md\n"
+
+        plan_path = self.social_plans / f"PLAN_SOCIAL_{ts}.md"
+        plan_content = f"""---
+type: social_post
+platforms: "{plats_label}"
+topic: AI Employee business promotion
+created: "{created}"
+status: pending
+---
+
+# Plan: Social Post {ts}
+
+## Action Plan
+{plan_actions}- [ ] Human reviews and approves each
+- [ ] Publish via Meta Graph API
+"""
+        plan_path.write_text(plan_content, encoding="utf-8")
+        logger.info(f"Social plan created: {plan_path.name}")
+        self.write_log(f"SOCIAL_POST_{ts}", "PENDING_APPROVAL", f"{plats_label} post draft(s) ready for review", domain="social")
 
     # ------------------------------------------------------------------
     # Retry helpers
@@ -682,6 +836,123 @@ pending
             if not plan_path.exists() or not self._plan_is_valid(plan_path):
                 self._generate_whatsapp_plan(task_file_path)
 
+        elif task_type in ("linkedin_task", "linkedin_post"):
+            # Delete the trigger file immediately (it's a signal, not a real post)
+            # so it never appears in the LinkedIn page. Then spawn the skill.
+            import threading
+            self.write_log(task_name, "LINKEDIN_TRIGGERED", "Spawning linkedin_post_creator skill", domain="linkedin")
+            logger.info(f"LinkedIn trigger received — spawning skill for {task_name}")
+            try:
+                task_file_path.unlink()
+            except Exception as e:
+                logger.warning(f"Could not delete LinkedIn trigger file: {e}")
+
+            def _run_linkedin():
+                self.run_claude_skill("linkedin_post_creator", Path("."))
+
+            t = threading.Thread(target=_run_linkedin, daemon=True)
+            t.start()
+            return
+
+        elif task_type in ("social_task", "social_post"):
+            # Delete trigger and generate social post draft directly (no Claude subprocess).
+            # Read the requested platform (set by the dashboard tab) before deleting.
+            platform = None
+            try:
+                trigger_content = task_file_path.read_text(encoding="utf-8")
+                m = re.search(r"^platform:\s*\"?(facebook|instagram)\"?\s*$",
+                              trigger_content, flags=re.MULTILINE | re.IGNORECASE)
+                if m:
+                    platform = m.group(1).lower()
+            except Exception as e:
+                logger.warning(f"Could not read platform from social trigger: {e}")
+            plat_desc = platform or "facebook + instagram"
+            self.write_log(task_name, "SOCIAL_TRIGGERED", f"Generating social post draft ({plat_desc})", domain="social")
+            logger.info(f"Social trigger received — generating {plat_desc} post for {task_name}")
+            try:
+                task_file_path.unlink()
+            except Exception as e:
+                logger.warning(f"Could not delete social trigger file: {e}")
+            self._generate_social_post(platform)
+            return
+
+        elif task_type == "odoo_task":
+            # Odoo invoice tasks carry all data in their frontmatter — no plan needed.
+            # Move directly to Pending_Approval/odoo/ for human review.
+            current_status = self.get_file_status(task_file_path)
+            if current_status in ("rejected", "completed", "pending_approval", "awaiting_approval"):
+                return
+            self.update_task_status(task_file_path, "awaiting_approval")
+            self.odoo_pending.mkdir(parents=True, exist_ok=True)
+            target = self.odoo_pending / task_file_path.name
+            shutil.move(str(task_file_path), str(target))
+            self.write_log(task_name, "PENDING_APPROVAL", "Odoo invoice queued for approval", domain="odoo")
+            logger.info(f"Odoo task moved to Pending_Approval/odoo/: {task_name}")
+            return
+
+        elif task_type == "browser_task":
+            current_status = self.get_file_status(task_file_path)
+            if current_status in ("rejected", "completed", "pending_approval", "awaiting_approval"):
+                return
+            # Read action from frontmatter
+            content = task_file_path.read_text(encoding="utf-8")
+            action_match = re.search(r"^action:\s*(\S+)", content, re.MULTILINE)
+            browser_action = action_match.group(1).strip() if action_match else "navigate"
+            if browser_action in ("navigate", "scrape"):
+                # Read-only: spawn browser_handler skill via Claude CLI (uses Playwright MCP)
+                self.write_log(task_name, "BROWSER_TRIGGERED", f"Spawning browser_handler skill for {browser_action}", domain="browser")
+                logger.info(f"Browser read-only task — spawning skill: {task_name}")
+                import threading
+                task_path_copy = task_file_path
+                def _run_browser():
+                    self.run_claude_skill(
+                        "browser_handler",
+                        task_path_copy,
+                        prompt=(
+                            f"Run the browser_handler skill on this browser task file:\n\n"
+                            f"{task_path_copy}\n\n"
+                            "It is a read-only navigate/scrape task. Navigate to the URL, "
+                            "get the page content, write the result to Plans/browser/, "
+                            "update Dashboard and Logs, then move the task to Done/browser/."
+                        ),
+                    )
+                threading.Thread(target=_run_browser, daemon=True).start()
+            else:
+                # Write task (fill-form, submit): route to Pending_Approval/browser/
+                self.update_task_status(task_file_path, "awaiting_approval")
+                self.browser_pending.mkdir(parents=True, exist_ok=True)
+                target = self.browser_pending / task_file_path.name
+                shutil.move(str(task_file_path), str(target))
+                self.write_log(task_name, "PENDING_APPROVAL", f"Browser {browser_action} task queued for approval", domain="browser")
+                logger.info(f"Browser write task moved to Pending_Approval/browser/: {task_name}")
+            return
+
+        elif task_type == "briefing_task":
+            import threading
+            self.write_log(task_name, "BRIEFING_TRIGGERED", "Spawning weekly_audit skill", domain="scheduler")
+            logger.info(f"Briefing trigger received — spawning weekly_audit skill for {task_name}")
+            try:
+                task_file_path.unlink()
+            except Exception as e:
+                logger.warning(f"Could not delete briefing trigger file: {e}")
+
+            def _run_briefing():
+                self.run_claude_skill("weekly_audit", Path("."))
+
+            threading.Thread(target=_run_briefing, daemon=True).start()
+            return
+
+        elif task_type == "cleanup_task":
+            import threading
+            self.write_log(task_name, "CLEANUP_TRIGGERED", "Running done-files cleanup", domain="scheduler")
+            logger.info(f"Cleanup trigger received — running cleanup for {task_name}")
+            try:
+                task_file_path.unlink()
+            except Exception as e:
+                logger.warning(f"Could not delete cleanup trigger file: {e}")
+            threading.Thread(target=self._cleanup_done_files, daemon=True).start()
+            return
+
         else:
             plan_path = self.plans_dir / f"PLAN_{task_name}.md"
             pending_dir = self.pending_approval_dir
@@ -733,7 +1004,14 @@ pending
         # Archive original inbox file and clean up Needs_Action
         self._cleanup_inbox_file(task_file_path)
 
-        done_dir = self.whatsapp_done if task_type == "whatsapp_task" else self.email_done
+        done_dir_map = {
+            "whatsapp_task": self.whatsapp_done,
+            "odoo_task": self.odoo_done,
+            "social_task": self.social_done,
+            "social_post": self.social_done,
+            "browser_task": self.browser_done,
+        }
+        done_dir = done_dir_map.get(task_type, self.email_done)
 
         if task_type == "email_task":
             logger.info(f"Email task approved — sending: {task_name}")
@@ -765,6 +1043,29 @@ pending
                         failed_target = failed_dir / task_file_path.name
                         shutil.move(str(task_file_path), str(failed_target))
                         logger.info(f"Moved failed task to Failed/email/: {task_name}")
+        elif task_type == "browser_task":
+            # Browser write tasks approved by human — spawn browser_handler skill to execute
+            current_status = self.get_file_status(task_file_path)
+            if current_status == "completed":
+                return
+            logger.info(f"Browser approved task — spawning skill: {task_name}")
+            self.write_log(task_name, "BROWSER_APPROVED", "Spawning browser_handler skill for approved write task", domain="browser")
+            import threading
+            task_path_copy = task_file_path
+            def _run_approved_browser():
+                self.run_claude_skill(
+                    "browser_handler",
+                    task_path_copy,
+                    prompt=(
+                        f"Run the browser_handler skill on this approved browser task:\n\n"
+                        f"{task_path_copy}\n\n"
+                        "This is an approved write task (fill-form or submit). Execute the browser "
+                        "actions, take screenshots before and after, update Dashboard and Logs, "
+                        "then move the file to Done/browser/."
+                    ),
+                )
+            threading.Thread(target=_run_approved_browser, daemon=True).start()
+
         else:
             logger.info(f"Processing approved task: {task_name}")
             self.update_task_status(task_file_path, "completed")
@@ -856,6 +1157,9 @@ pending
                     + list(self.whatsapp_needs_action.glob("TASK_*.md"))
                     + list(self.odoo_needs_action.glob("TASK_*.md"))
                     + list(self.social_needs_action.glob("TASK_*.md"))
+                    + list(self.browser_needs_action.glob("TASK_*.md"))
+                    + list(self.linkedin_needs_action.glob("TASK_*.md"))
+                    + list(self.scheduler_needs_action.glob("TASK_*.md"))
                 )
                 for file in needs_action_files:
                     self.process_task_file(file)
@@ -863,8 +1167,9 @@ pending
                 approved_files = (
                     list(self.email_approved.glob("TASK_*.md"))
                     + list(self.whatsapp_approved.glob("TASK_*.md"))
-                    + list(self.odoo_approved.glob("TASK_*.md"))
-                    + list(self.social_approved.glob("TASK_*.md"))
+                    + list(self.browser_approved.glob("TASK_*.md"))
+                    # Odoo and Social have dedicated executors in approved_watcher.py;
+                    # scanning them here causes a race condition and wrong Done directory.
                 )
                 for file in approved_files:
                     self.process_approved_task(file)

@@ -1,5 +1,12 @@
 {
-  "approved": [],
+  "approved": [
+    "SOCIAL_POST_IG_20260601_093611.md",
+    "SOCIAL_POST_IG_20260601_093731.md",
+    "SOCIAL_POST_IG_20260601_145609.md",
+    "SOCIAL_POST_IG_20260601_170429.md",
+    "SOCIAL_POST_IG_20260601_173250.md",
+    "SOCIAL_POST_IG_20260601_173439.md"
+  ],
   "skipped": [
     "TASK_email_Honhaar_Jawan_20260325_122427_057508.txt.md",
     "TASK_email_Mubashir_Ali_20260325_120013_893103.txt.md",
@@ -111,6 +118,22 @@
     "TASK_whatsapp_Amna_01_22PM.txt.md",
     "TASK_email_Binance_20260529_134334_094253.txt.md",
     "TASK_whatsapp_Geo_News_07_54PM.txt.md",
-    "TASK_whatsapp_Panaversity_Agentic_AI_Un_08_29PM.txt.md"
+    "TASK_whatsapp_Panaversity_Agentic_AI_Un_08_29PM.txt.md",
+    "TASK_email_Instagram_20260601_064815_429484.txt.md",
+    "TASK_email_Instagram_20260601_064816_159626.txt.md",
+    "TASK_email_LinkedIn_20260601_064812_534679.txt.md",
+    "TASK_email_LinkedIn_20260601_064813_221622.txt.md",
+    "TASK_email_LinkedIn_20260601_064813_856470.txt.md",
+    "TASK_email_LinkedIn_20260601_064814_513131.txt.md",
+    "TASK_email_Rukhsar_Fatima_20260601_064811_808867.txt.md",
+    "SOCIAL_POST_20260601_082705.md",
+    "TASK_whatsapp_Panaversity_Agentic_AI_Un_11_04AM.txt.md",
+    "TASK_whatsapp_Learn_to_Build_AI_Employe_11_05AM.txt.md",
+    "TASK_whatsapp_Geo_News_11_10AM.txt.md",
+    "TASK_email_eHunar_Hunarmand_Kamyaab__20260601_115422_598448.txt.md",
+    "TASK_email_Team_Snapchat_20260601_133904_643959.txt.md",
+    "TASK_email_Muhammad_Hammad_Farooq_20260601_165950_661886.txt.md",
+    "SOCIAL_POST_IG_20260601_174627.md",
+    "SOCIAL_POST_IG_20260601_175907.md"
   ]
 }

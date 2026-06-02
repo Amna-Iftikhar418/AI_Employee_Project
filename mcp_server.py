@@ -31,9 +31,9 @@ logger = logging.getLogger(__name__)
 
 API_KEY = os.getenv("MCP_API_KEY")
 if not API_KEY:
-    raise RuntimeError(
-        "MCP_API_KEY environment variable is not set. "
-        "Add  MCP_API_KEY=<your-key>  to your .env file before starting the server."
+    logger.warning(
+        "MCP_API_KEY environment variable is not set — all authenticated requests will be rejected. "
+        "Add  MCP_API_KEY=<your-key>  to your .env file."
     )
 
 GMAIL_TOKEN_PATH = os.getenv("GMAIL_TOKEN_PATH", "token.json")
@@ -156,6 +156,11 @@ def verify_api_key(api_key: Optional[str], client_ip: str) -> None:
             detail="Too many failed authentication attempts — try again later",
         )
 
+    if not API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Server misconfigured: MCP_API_KEY not set",
+        )
     provided = (api_key or "").encode()
     expected = API_KEY.encode()
     if not hmac.compare_digest(provided, expected):

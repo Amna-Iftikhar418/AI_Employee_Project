@@ -105,3 +105,4 @@ tell me what this whole project does in steps
   ├─────────────┼─────────────────────────────────────────────────────────────────────┤
   │ Browser MCP │ Controls a real browser — navigates, fills forms, takes screenshots │
   └─────────────┴─────────────────────────────────────────────────────────────────────┘
+  

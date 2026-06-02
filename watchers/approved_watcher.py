@@ -32,7 +32,7 @@ sys.path.insert(0, str(ROOT))
 _WATCHERS_DIR = Path(__file__).parent
 if str(_WATCHERS_DIR) not in sys.path:
     sys.path.insert(0, str(_WATCHERS_DIR))
-from retry_handler import TransientError, with_retry, write_log_alert  # noqa: E402
+from retry_handler import AuthError, TransientError, with_retry, write_log_alert  # noqa: E402
 from audit_logger import log_action  # noqa: E402  TASK-8.4
 
 from vault_utils import load_processed, save_processed
@@ -77,7 +77,7 @@ def _mcp_health_check(url: str = "http://localhost:8001/health", timeout: int = 
     """Return True if the MCP server responds OK; raise TransientError on failure."""
     try:
         with urllib.request.urlopen(url, timeout=timeout) as resp:
-            return resp.status < 500
+            return resp.status == 200
     except (urllib.error.URLError, OSError) as exc:
         raise TransientError(f"MCP health check failed: {exc}") from exc
 
@@ -307,10 +307,18 @@ def watch():
 
                 print(f"[WATCHER] Detected file: {file_path}")
 
-                # Skip if successfully processed in a previous run
+                # Skip if successfully processed in a previous run — BUT only if
+                # the file is no longer in Approved/. If it's back here (re-approved
+                # or previous executor failed and task_processor moved it incorrectly),
+                # clear it from processed and re-run the executor.
                 if name in persisted:
-                    print(f"[SKIP] Already processed: {name}")
-                    continue
+                    if file_path.exists():
+                        persisted.discard(name)
+                        _save_processed(persisted)
+                        print(f"[REQUEUE] {name} is back in Approved/ — clearing from processed set, re-processing")
+                    else:
+                        print(f"[SKIP] Already processed: {name}")
+                        continue
 
                 # Skip if we already attempted it recently (cooldown not expired)
                 if name in attempted_this_run:
@@ -331,13 +339,6 @@ def watch():
                         print(f"[FATAL] Moved to: {dest}")
                     except Exception as move_err:
                         print(f"[FATAL] Could not move file: {move_err}")
-                    persisted.add(name)
-                    _save_processed(persisted)
-                    continue
-
-                # Skip files that are already marked completed
-                if _is_completed(file_path):
-                    print(f"[SKIP] Already completed: {name}")
                     persisted.add(name)
                     _save_processed(persisted)
                     continue
@@ -371,6 +372,15 @@ def watch():
                         else:
                             print(f"[ERROR] facebook_instagram_executor not available — cannot process {file_path.name}")
 
+                except AuthError as e:
+                    # Expired/invalid credentials are not the file's fault. Undo the
+                    # retry increment so a dead token never accumulates toward
+                    # MAX_RETRIES and falsely rejects a valid post. The file stays in
+                    # Approved/ and is re-attempted (after cooldown) until the operator
+                    # fixes the token.
+                    retry_counts[name] = max(0, retry_counts.get(name, 1) - 1)
+                    print(f"[AUTH] {name} left in Approved/ — credentials expired, not counted as a retry: {e}")
+                    continue
                 except Exception as e:
                     print(f"[ERROR] Unhandled exception for {name}: {e}")
                     continue

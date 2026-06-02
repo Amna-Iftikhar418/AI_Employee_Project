@@ -1,5 +1,13 @@
 # Personal AI Employee Dashboard
 
+## Recent Activity
+
+- LinkedIn post created: LINKEDIN_POST_20260602155322_687047.md
+- Topic: The future of no-code tools
+- Plan: PLAN_LINKEDIN_20260602155322_687047.md
+- Status: awaiting_approval
+- Date: 2026-06-02
+
 ## System Status
 AI Employee: Active
 
@@ -14,6 +22,18 @@ AI Employee: Active
 | Odoo | Odoo MCP (TASK-2) | Active | ✅ odoo/ in all stages |
 | Facebook/Instagram | Social MCP (TASK-3) | Pending setup | ✅ social/ in all stages |
 
+## Recent Activity
+
+- LinkedIn post created: LINKEDIN_POST_20260602155207_858998.md | Topic: Python productivity tips | Plan: PLAN_LINKEDIN_20260602155207_858998.md | Status: awaiting_approval | Date: 2026-06-02
+- [08:59] Browser: screenshot https://www.google.com/ — success (saved screenshot_google_20260602.png; task browser_trigger_2026-06-01T21-32-46)
+- [02:35] Browser: screenshot https://www.google.com/ — success (saved screenshot_google_20260601_213246.png)
+- LinkedIn post created: LINKEDIN_POST_20260601082304_648980.md
+- Topic: Python productivity tips
+- Plan: PLAN_LINKEDIN_20260601082304_648980.md
+- [02:00] Browser: navigate https://www.skills.sh/ — success (skills marketplace for AI agents)
+- Status: awaiting_approval
+- Date: 2026-06-01
+
 ## Domain Activity Summary
 <!-- Updated by each domain's skill/watcher on every action -->
 | Domain | Last Action | Date |
@@ -21,10 +41,16 @@ AI Employee: Active
 | Email | See Recent Activity below | — |
 | WhatsApp | See Recent Activity below | — |
 | LinkedIn | Post published | 2026-05-29 |
-| Odoo | Invoices read: 2 records (latest: Test Customer $100.00 draft) | 2026-05-29 |
+| Odoo | Draft invoice created: Rida $40.00 | 2026-06-02 |
 | Social | Not yet configured | — |
 
 ## Recent Activity
+
+- LinkedIn post created: LINKEDIN_POST_20260601101500_847293.md
+- Topic: AI automation in business
+- Plan: PLAN_LINKEDIN_20260601101500_847293.md
+- Status: awaiting_approval
+- Date: 2026-06-01
 
 - LinkedIn post created: LINKEDIN_POST_20260529145500_392847.md
 - Topic: physical and robotics AI
@@ -569,3 +595,221 @@ AI Employee: Active
 - Tasks completed (all-time): 7
 - Bottlenecks: 0 task(s) open >7 days
 - Date: 2026-05-31
+
+| 2026-06-01 06:49:35 | email | TASK_email_Instagram_20260601_064815_429484.txt.md | Rejected via dialog |
+
+- [Rejected] email_Instagram_20260601_064815_429484.txt - 2026-06-01 06:49:48
+
+## Recent Activity
+
+- CEO Briefing generated: 2026-06-01_Monday_Briefing.md
+- Revenue MTD: N/A (Odoo offline) / $5,000 target
+- Tasks completed (all-time): 5
+- Bottlenecks: 0 task(s) open >7 days
+- Date: 2026-06-01
+
+| 2026-06-01 06:51:30 | email | TASK_email_Instagram_20260601_064816_159626.txt.md | Rejected via dialog |
+
+| 2026-06-01 06:51:31 | email | TASK_email_LinkedIn_20260601_064812_534679.txt.md | Rejected via dialog |
+
+| 2026-06-01 06:51:32 | email | TASK_email_LinkedIn_20260601_064813_221622.txt.md | Rejected via dialog |
+
+| 2026-06-01 06:51:33 | email | TASK_email_LinkedIn_20260601_064813_856470.txt.md | Rejected via dialog |
+
+| 2026-06-01 06:51:33 | email | TASK_email_LinkedIn_20260601_064814_513131.txt.md | Rejected via dialog |
+
+| 2026-06-01 06:51:34 | email | TASK_email_Rukhsar_Fatima_20260601_064811_808867.txt.md | Rejected via dialog |
+
+- [Rejected] email_Instagram_20260601_064816_159626.txt - 2026-06-01 06:51:48
+
+- [Rejected] email_LinkedIn_20260601_064812_534679.txt - 2026-06-01 06:51:48
+
+- [Rejected] email_LinkedIn_20260601_064813_221622.txt - 2026-06-01 06:51:49
+
+- [Rejected] email_LinkedIn_20260601_064813_856470.txt - 2026-06-01 06:51:49
+
+- [Rejected] email_LinkedIn_20260601_064814_513131.txt - 2026-06-01 06:51:49
+
+- [Rejected] email_Rukhsar_Fatima_20260601_064811_808867.txt - 2026-06-01 06:51:49
+
+- [Received] whatsapp_Amna_07_55AM.txt - 2026-06-01 07:55:05
+
+- [Received] whatsapp_Amna_07_55AM.txt - 2026-06-01 07:55:08
+
+- [Completed] whatsapp_Amna_07_55AM.txt - 2026-06-01 07:56:25
+
+## Recent Activity
+
+- Email sent: email_Amna_Iftikhar_20260601_075814_924078.txt
+- To: amnaiftikhar413@gmail.com
+- Subject: surprise
+- Executed by: send_email skill
+- Date: 2026-06-01 07:59:01
+
+| 2026-06-01 09:20:07 | social | SOCIAL_POST_20260601_082705.md | Rejected via dialog |
+
+| Social | Social post published: Facebook: FAILED (Error validating access token: Session has expired on Sunday, 31-May-26 07:00:00 PDT. The current time is Sunday, 31-May-26 21:28:42 PDT.) | Instagram: SKIPPED (no image_url) | 2026-06-01 |
+
+- [Received] whatsapp_Panaversity_Agentic_AI_Un_11_04AM.txt - 2026-06-01 11:04:06
+
+- [Received] whatsapp_Panaversity_Agentic_AI_Un_11_04AM.txt - 2026-06-01 11:04:20
+
+| 2026-06-01 11:04:29 | whatsapp | TASK_whatsapp_Panaversity_Agentic_AI_Un_11_04AM.txt.md | Rejected via dialog |
+
+- [Rejected] whatsapp_Panaversity_Agentic_AI_Un_11_04AM.txt - 2026-06-01 11:04:33
+
+- [Received] whatsapp_Learn_to_Build_AI_Employe_11_05AM.txt - 2026-06-01 11:05:06
+
+- [Received] whatsapp_Learn_to_Build_AI_Employe_11_05AM.txt - 2026-06-01 11:05:20
+
+| 2026-06-01 11:09:44 | whatsapp | TASK_whatsapp_Learn_to_Build_AI_Employe_11_05AM.txt.md | Rejected via dialog |
+
+- [Rejected] whatsapp_Learn_to_Build_AI_Employe_11_05AM.txt - 2026-06-01 11:09:53
+
+- [Received] whatsapp_Geo_News_11_10AM.txt - 2026-06-01 11:10:17
+
+- [Received] whatsapp_Geo_News_11_10AM.txt - 2026-06-01 11:10:40
+
+| 2026-06-01 11:10:43 | whatsapp | TASK_whatsapp_Geo_News_11_10AM.txt.md | Rejected via dialog |
+
+- [Rejected] whatsapp_Geo_News_11_10AM.txt - 2026-06-01 11:10:54
+
+| 2026-06-01 11:54:46 | email | TASK_email_eHunar_Hunarmand_Kamyaab__20260601_115422_598448.txt.md | Rejected via dialog |
+
+- [Rejected] email_eHunar_Hunarmand_Kamyaab__20260601_115422_598448.txt - 2026-06-01 11:54:55
+
+| 2026-06-01 13:43:50 | email | TASK_email_Team_Snapchat_20260601_133904_643959.txt.md | Rejected via dialog |
+
+- [Rejected] email_Team_Snapchat_20260601_133904_643959.txt - 2026-06-01 13:44:06
+
+| Social | Social post published: Facebook: FAILED (Error validating access token: Session has expired on Sunday, 31-May-26 07:00:00 PDT. The current time is Monday, 01-Jun-26 02:56:26 PDT.) | 2026-06-01 |
+
+| 2026-06-01 17:00:21 | email | TASK_email_Muhammad_Hammad_Farooq_20260601_165950_661886.txt.md | Rejected via dialog |
+
+- [Rejected] email_Muhammad_Hammad_Farooq_20260601_165950_661886.txt - 2026-06-01 17:00:29
+
+| Social | Social post published: Facebook: FAILED (Error validating access token: Session has expired on Sunday, 31-May-26 07:00:00 PDT. The current time is Monday, 01-Jun-26 05:04:54 PDT.) | 2026-06-01 |
+
+| Social | Social post published: Facebook: FAILED (Error validating access token: Session has expired on Sunday, 31-May-26 07:00:00 PDT. The current time is Monday, 01-Jun-26 05:33:07 PDT.) | 2026-06-01 |
+
+| Social | Social post published: Facebook: FAILED ((#200) If posting to a group, requires app being installed in the group, and \
+          either publish_to_groups permission with user token, or both pages_read_engagement \
+          and pages_manage_posts permission with page token; If posting to a page, \
+          requires both pages_read_engagement and pages_manage_posts as an admin with \
+          sufficient administrative permission) | 2026-06-01 |
+
+| Social | Social post published: Facebook: FAILED ((#200) If posting to a group, requires app being installed in the group, and \
+          either publish_to_groups permission with user token, or both pages_read_engagement \
+          and pages_manage_posts permission with page token; If posting to a page, \
+          requires both pages_read_engagement and pages_manage_posts as an admin with \
+          sufficient administrative permission) | 2026-06-01 |
+
+| 2026-06-01 17:47:04 | social | SOCIAL_POST_IG_20260601_093611.md | Approved via dialog |
+
+| 2026-06-01 17:47:07 | social | SOCIAL_POST_IG_20260601_093731.md | Approved via dialog |
+
+| Social | Social post published: Instagram: SKIPPED (no image_url) | 2026-06-01 |
+
+| Social | Social post published: Instagram: SKIPPED (no image_url) | 2026-06-01 |
+
+| 2026-06-01 17:47:09 | social | SOCIAL_POST_IG_20260601_145609.md | Approved via dialog |
+
+| 2026-06-01 17:47:10 | social | SOCIAL_POST_IG_20260601_170429.md | Approved via dialog |
+
+| 2026-06-01 17:47:11 | social | SOCIAL_POST_IG_20260601_173250.md | Approved via dialog |
+
+| 2026-06-01 17:47:11 | social | SOCIAL_POST_IG_20260601_173439.md | Approved via dialog |
+
+| Social | Social post published: Instagram: SKIPPED (no image_url) | 2026-06-01 |
+
+| Social | Social post published: Instagram: SKIPPED (no image_url) | 2026-06-01 |
+
+| Social | Social post published: Instagram: SKIPPED (no image_url) | 2026-06-01 |
+
+| Social | Social post published: Instagram: SKIPPED (no image_url) | 2026-06-01 |
+
+| 2026-06-01 17:47:41 | social | SOCIAL_POST_IG_20260601_174627.md | Rejected via dialog |
+
+| Social | Social post published: Facebook: FAILED ((#200) If posting to a group, requires app being installed in the group, and \
+          either publish_to_groups permission with user token, or both pages_read_engagement \
+          and pages_manage_posts permission with page token; If posting to a page, \
+          requires both pages_read_engagement and pages_manage_posts as an admin with \
+          sufficient administrative permission) | 2026-06-01 |
+
+| 2026-06-01 18:05:37 | social | SOCIAL_POST_IG_20260601_175907.md | Rejected via dialog |
+
+| Social | Social post published: Facebook: FAILED ((#200) If posting to a group, requires app being installed in the group, and \
+          either publish_to_groups permission with user token, or both pages_read_engagement \
+          and pages_manage_posts permission with page token; If posting to a page, \
+          requires both pages_read_engagement and pages_manage_posts as an admin with \
+          sufficient administrative permission) | 2026-06-01 |
+
+| Social | Social post published: Facebook: OK | 2026-06-01 |
+
+| Social | Social post published: Facebook: OK | 2026-06-01 |
+
+| Social | Social post published: Instagram: SKIPPED (no image_url) | 2026-06-01 |
+
+| Social | Social post published: Facebook: OK | 2026-06-01 |
+
+| Social | Social post published: Instagram: OK | 2026-06-01 |
+
+| Social | Social post published: Facebook: OK | 2026-06-01 |
+
+- [Rejected] email_Ollama_20260601_182735_168780.txt - 2026-06-01 19:55:26
+
+| Social | Social post published: Instagram: OK | 2026-06-01 |
+
+- [Completed] odoo_invoice_20260602_TEST - 2026-06-02 00:38:01
+
+- [Rejected] odoo_trigger_2026-06-01T20-09-29 - 2026-06-02 01:21:52
+
+- [Rejected] odoo_trigger_2026-06-01T19-18-06 - 2026-06-02 02:11:49
+
+- [Completed] browser_trigger_2026-06-01T21-26-42 - 2026-06-02 02:26:58
+
+- [Completed] browser_trigger_2026-06-01T21-32-46 - 2026-06-02 08:58:00
+
+- [Received] whatsapp_Amna_09_01AM.txt - 2026-06-02 09:01:06
+
+- [Completed] whatsapp_Amna_09_01AM.txt - 2026-06-02 09:01:57
+
+- [Rejected] email_LinkedIn_20260602_085201_388089.txt - 2026-06-02 09:01:57
+
+## Recent Activity
+
+- LinkedIn post created: LINKEDIN_POST_20260602090141_248376.md
+- Topic: Lessons from building AI systems
+- Plan: PLAN_LINKEDIN_20260602090141_248376.md
+- Status: awaiting_approval
+- Date: 2026-06-02
+
+- [Received] whatsapp_Amna_09_02AM.txt - 2026-06-02 09:02:56
+
+- [Completed] whatsapp_Amna_09_02AM.txt - 2026-06-02 09:04:37
+
+## Recent Activity
+
+- CEO Briefing generated: 2026-06-02_Monday_Briefing.md
+- Revenue MTD: $0 / $5,000 target (Odoo offline — manual tracker)
+- Tasks completed (all-time): 14
+- Bottlenecks: 0 task(s) open >7 days
+- Date: 2026-06-02
+
+## Recent Activity
+
+- LinkedIn post published (auto): LINKEDIN_POST_20260602155207_858998.md
+- Topic: Python productivity tips
+- Plan followed: PLAN_LINKEDIN_20260602155207_858998.md
+- Published at: 2026-06-02T15:56:07.009620
+- Post URL: https://www.linkedin.com/feed/?shareActive=true
+- Date: 2026-06-02
+
+
+- [Rejected] email_LinkedIn_20260602_110924_001371.txt - 2026-06-02 15:58:22
+
+- [Rejected] email_LinkedIn_20260602_140046_870219.txt - 2026-06-02 15:58:22
+
+- [Rejected] email_Najam_via_LinkedIn_20260602_095958_448715.txt - 2026-06-02 15:58:22
+
+- [Rejected] email_Adv_Zonain_Ahmed_20260602_160022_316346.txt - 2026-06-02 16:11:43

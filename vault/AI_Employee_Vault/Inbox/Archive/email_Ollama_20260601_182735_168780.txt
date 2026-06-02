@@ -1,0 +1,50 @@
+From: Ollama <hello@ollama.com>
+Subject: MiniMax M3 is launching on Ollama's Cloud
+
+Body:
+
+
+https://ollama.com/library/minimax-m3
+
+In partnership with MiniMax, the latest M3 model [https://ollama.com/library/minimax-m3] is launching with availability on
+Ollama's Cloud. With Ollama's Cloud, this model's hosting will be US-based with zero data retention.
+ 
+MiniMax M3 [https://ollama.com/library/minimax-m3] is a model made for top-tier performance on coding and agentic tasks with
+multimodality support. Powered by the proprietary MiniMax Sparse Attention (MSA) architecture, M3 supports up to 1M tokens context
+window with a guaranteed minimum of 512K tokens. The 1M context is the infrastructure for long-range Agent tasks, long-range
+Coding, and long-video understanding.
+ 
+Until now, only a handful of closed-source models could simultaneously achieve frontier coding capabilities, million-token
+context, and multimodal support. M3 is the first to bring complete frontier capability to the open world.
+ 
+
+
+Try MiniMax M3
+
+ 
+To use MiniMax M3 with Claude Code [https://docs.ollama.com/integrations/claude-code], run:
+ 
+ollama launch claude --model minimax-m3:cloud
+ 
+For use with Hermes Agent [https://docs.ollama.com/integrations/hermes]:
+ 
+ollama launch hermes --model minimax-m3:cloud
+ 
+For use with OpenClaw [https://docs.ollama.com/integrations/openclaw]:
+ 
+ollama launch openclaw --model minimax-m3:cloud
+ 
+Chat with the model:
+ 
+ollama run minimax-m3:cloud
+ 
+See the model page [https://ollama.com/library/minimax-m3] for more information and integrations.
+ 
+If you have any feedback, please directly reply to this email.
+ 
+❤️ Ollama
+ 
+You are receiving this email because you opted in to receive updates from Ollama
+Ollama, 744 High Street, Palo Alto, CA 94301
+Unsubscribe [https://app.loops.so/unsubscribe/cmpv8tbe91esw011sgh3xeebe/d143c167d755dc59ba87bf69440fcb8c2850b78976066c9dcf528b77c03ef97858d6761e12673504fd8073282a0e68495d5e6b7f0949c2df50e32494]
+

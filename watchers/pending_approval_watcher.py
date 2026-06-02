@@ -40,7 +40,7 @@ STATE_FILE  = PENDING_DIR / ".processed_pending_review.json"
 REJECTED_DIR = VAULT / "Rejected"
 PLANS_DIR    = VAULT / "Plans"
 INBOX_DIR    = VAULT / "Inbox"
-SUBDIRS        = ["email", "whatsapp", "odoo", "social"]   # linkedin handled separately
+SUBDIRS        = ["email", "whatsapp", "odoo"]   # linkedin and social handled via web UI
 CHECK_INTERVAL = 10                      # seconds between scans
 
 # ── Logging ───────────────────────────────────────────────────────────────────
@@ -323,7 +323,7 @@ def _process_pending() -> None:
 
 def main() -> None:
     log.info("Pending approval watcher started.")
-    log.info(f"Watching: {PENDING_DIR / 'email'}  |  {PENDING_DIR / 'whatsapp'}")
+    log.info(f"Watching: {PENDING_DIR / 'email'}  |  {PENDING_DIR / 'whatsapp'}  |  {PENDING_DIR / 'odoo'}")
     log.info(f"State file: {STATE_FILE}")
 
     while True:

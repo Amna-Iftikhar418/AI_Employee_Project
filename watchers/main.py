@@ -37,6 +37,13 @@ LOCK_FILE     = ROOT / ".ai_employee.pid"
 WHATSAPP_LOCK = ROOT / ".wwebjs_auth" / "session" / "SingletonLock"
 MCP_PORT      = 8001
 
+# Odoo ERP backend (the database-backed server on port 8069 — separate from the
+# stdio Odoo *MCP* server, which Claude Code launches from .mcp.json).
+ODOO_DIR       = ROOT / "odoo"
+ODOO_PYTHON    = ODOO_DIR / "odoo-venv" / "Scripts" / "python.exe"
+ODOO_HTTP_PORT = 8069
+POSTGRES_PORT  = 5432
+
 # ── Child process registry ────────────────────────────────────────────────────
 
 _processes: list[subprocess.Popen] = []
@@ -283,10 +290,14 @@ def _clear_whatsapp_lock() -> None:
 # 6. PROCESS MANAGEMENT
 # =============================================================================
 
-def _spawn(cmd: list[str]) -> subprocess.Popen:
-    proc = subprocess.Popen(cmd, cwd=str(ROOT))
+def _spawn(cmd: list[str], cwd: Path | None = None) -> subprocess.Popen:
+    workdir = str(cwd) if cwd is not None else str(ROOT)
+    proc = subprocess.Popen(cmd, cwd=workdir)
+    # Remember the working dir so _watch_loop restarts the child in the same
+    # place (Odoo, for one, depends on cwd to resolve its relative addons_path).
+    proc.cwd_override = workdir  # type: ignore[attr-defined]
     _processes.append(proc)
-    log.info(f"Started: {' '.join(cmd)}")
+    log.info(f"Started (cwd={workdir}): {' '.join(cmd)}")
     return proc
 
 
@@ -349,8 +360,62 @@ def _wait_for_mcp_health(port: int, timeout: int = 30) -> bool:
     return False
 
 
+def _wait_for_port(port: int, timeout: int = 30) -> bool:
+    """Poll a TCP port until something is listening or the timeout expires."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if _port_in_use(port):
+            return True
+        time.sleep(1)
+    return False
+
+
+def _launch_odoo() -> None:
+    """Start the Odoo ERP backend (port 8069), gated on PostgreSQL.
+
+    Two things make this child different from the others:
+
+    1. PostgreSQL gate — Odoo keeps all of its data in Postgres and will crash
+       on boot if it cannot connect. We poll port 5432 first; if Postgres never
+       comes up we SKIP Odoo (rather than spawn a process the watchdog would
+       just crash-loop every 10 s) and tell the user to start Postgres.
+
+    2. cwd fix — odoo.conf uses a *relative* `addons_path = addons`, which only
+       resolves correctly when the process runs from the odoo/ directory, not
+       the repo root. So we spawn it with cwd=ODOO_DIR.
+    """
+    if not ODOO_PYTHON.exists():
+        log.warning(f"Odoo not found at {ODOO_PYTHON} — skipping Odoo launch.")
+        return
+
+    if _port_in_use(ODOO_HTTP_PORT):
+        log.info(f"Odoo already listening on port {ODOO_HTTP_PORT} — not starting another.")
+        return
+
+    log.info(f"Waiting for PostgreSQL on port {POSTGRES_PORT}...")
+    if not _wait_for_port(POSTGRES_PORT, timeout=30):
+        log.error("=" * 60)
+        log.error(f"  PostgreSQL not reachable on port {POSTGRES_PORT} after 30 s.")
+        log.error("  Odoo cannot boot without it — SKIPPING Odoo launch.")
+        log.error("  Start PostgreSQL, then restart this launcher.")
+        log.error("=" * 60)
+        return
+
+    log.info(f"PostgreSQL is up on port {POSTGRES_PORT} — launching Odoo.")
+    _spawn([str(ODOO_PYTHON), "odoo-bin", "-c", "odoo.conf"], cwd=ODOO_DIR)
+    log.info(
+        f"Odoo ERP starting on port {ODOO_HTTP_PORT} "
+        "(boot takes ~30 s; logs in odoo/odoo.log)."
+    )
+
+
 def _launch_all() -> None:
     """Spawn every component in the correct order."""
+
+    # ── Odoo ERP backend (port 8069, gated on PostgreSQL) ─────────────────────
+    # Powers the dashboard's Odoo page and the odoo_handler skill. Started first
+    # so its ~30 s boot overlaps with the rest of the pipeline coming up.
+    _launch_odoo()
 
     # ── MCP Server 1: Email MCP (HTTP, port 8001) ─────────────────────────────
     # Sends emails via Gmail API. Started as a child process; auto-restarted by
@@ -391,7 +456,6 @@ def _launch_all() -> None:
     _spawn(["uv", "run", "watchers/whatsapp_inbox_watcher.py"])
 
     _spawn(["uv", "run", "watchers/approved_watcher.py"])
-    _spawn(["uv", "run", "watchers/pending_approval_watcher.py"])
     _spawn(["uv", "run", "watchers/scheduler.py"])
 
     log.info("=" * 55)
@@ -452,7 +516,9 @@ def _watch_loop() -> None:
                 if "mcp_server" in cmd_str:
                     _ensure_port_free(MCP_PORT)
 
-                new_proc = subprocess.Popen(proc.args, cwd=str(ROOT))
+                workdir = getattr(proc, "cwd_override", str(ROOT))
+                new_proc = subprocess.Popen(proc.args, cwd=workdir)
+                new_proc.cwd_override = workdir  # type: ignore[attr-defined]
                 _processes[i] = new_proc
                 log.info(f"Restarted: {cmd_str}")
 

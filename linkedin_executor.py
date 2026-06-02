@@ -195,7 +195,7 @@ def _run_browser_attempt(post_content: str, attempt: int) -> dict:
 
 # ── Main entry point ──────────────────────────────────────────────────────────
 
-def run_linkedin_post(file_path):
+def run_linkedin_post(file_path) -> bool:
     """
     Process one approved LinkedIn post file end-to-end.
     Retries up to MAX_RETRIES times before giving up.
@@ -205,23 +205,31 @@ def run_linkedin_post(file_path):
     file_path = Path(file_path)
     print(f"\n[AUTO] -- Processing: {file_path.name}")
 
+    # Node.js pre-flight check
+    if shutil.which("node") is None:
+        print("[ERROR] 'node' not found in PATH — cannot run linkedin_post.js")
+        return False
+    if not NODE_SCRIPT.exists():
+        print(f"[ERROR] Node script missing: {NODE_SCRIPT}")
+        return False
+
     # Read file
     try:
         content = file_path.read_text(encoding="utf-8")
     except Exception as e:
         print(f"[ERROR] Cannot read {file_path.name}: {e}")
-        return
+        return False
 
     # Guard: correct type
     fm = _extract_frontmatter(content)
     if fm.get("type") != "linkedin_post":
         print(f"[SKIP]  Not a linkedin_post: {file_path.name}")
-        return
+        return False
 
     # Guard: already completed
     if fm.get("status") == "completed":
         print(f"[SKIP]  Already completed: {file_path.name}")
-        return
+        return False
 
     # Guard: post_url already set (published but cleanup crashed) — auto-recover
     if fm.get("post_url"):
@@ -243,6 +251,10 @@ def run_linkedin_post(file_path):
     raw_ref        = fm.get("plan_reference", "")
     plan_reference = Path(raw_ref).name if raw_ref else ""
     word_count     = len(post_content.split())
+
+    if word_count < 5:
+        print(f"[ERROR] Post content too short ({word_count} words) — refusing to publish empty post.")
+        return False
 
     print(f"[AUTO]  Topic     : {topic}")
     print(f"[AUTO]  Words     : {word_count}")

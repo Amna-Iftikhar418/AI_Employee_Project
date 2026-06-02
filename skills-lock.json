@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "find-skills": {
+      "source": "agentspace-so/skills",
+      "sourceType": "github",
+      "skillPath": "find-skills/SKILL.md",
+      "computedHash": "aa453a58777bdfb5342caf25194018f646eae1dc548a6ea3313fe94950156e3e"
+    },
+    "frontend-design": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "skillPath": "skills/frontend-design/SKILL.md",
+      "computedHash": "516bd2154eb843a8240e43d5b285229129853114ad7075a5e141e1c08e408c84"
+    }
+  }
+}

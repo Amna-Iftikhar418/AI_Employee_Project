@@ -7,9 +7,25 @@ any web task that requires browser automation.
 
 ## MCP Server
 - Name: `browser`
-- Tools: `browser_navigate`, `browser_get_content`, `browser_click`,
-  `browser_fill_field`, `browser_screenshot`, `browser_check_element`,
-  `browser_get_text`, `browser_select_option`, `browser_close_session`
+- Tools (grouped):
+  - **Navigation:** `browser_navigate` (open a URL), `browser_back` (go back),
+    `browser_forward` (go forward), `browser_reload` (reload current page),
+    `browser_wait_for` (wait for a selector/state before continuing)
+  - **Reading:** `browser_get_content` (full page text/HTML), `browser_get_text`
+    (text of one element), `browser_get_attribute` (read an attribute of an element),
+    `browser_get_links` (collect links on the page), `browser_check_element`
+    (test whether an element exists/is visible), `browser_screenshot` (capture image)
+  - **Interaction:** `browser_click` (click an element), `browser_hover` (hover an
+    element), `browser_scroll` (scroll the page/element), `browser_press_key`
+    (send a keyboard key), `browser_evaluate` (run JS in page context)
+  - **Forms:** `browser_fill_field` (set an input's value in one shot),
+    `browser_type` (type text key-by-key into a field), `browser_select_option`
+    (choose a `<select>` option), `browser_set_checkbox` (check/uncheck a box),
+    `browser_upload_file` (attach a file to a file input)
+  - **Tabs & dialogs:** `browser_list_tabs` (enumerate open tabs),
+    `browser_switch_tab` (focus a tab), `browser_new_tab` (open a tab),
+    `browser_handle_dialog` (accept/dismiss alert/confirm/prompt dialogs)
+  - **Session:** `browser_close_session` (close the browser and free resources)
 
 ## CRITICAL: HITL Rules
 - **NEVER submit a payment form** without a corresponding file in `Approved/browser/`
@@ -142,3 +158,43 @@ uv --directory mcp_servers/browser_mcp run playwright install chromium
 - Navigation timeout → log error, do NOT retry automatically, alert human
 - Element not found → log error, take screenshot of current state, move to Rejected/
 - Payment submission fails → log error, do NOT retry, require fresh human approval
+
+## Full Capability Reference
+The `browser` MCP server exposes a complete real-browser surface (JavaScript runs;
+this is NOT a static HTML fetcher). Use the right tool for the job:
+
+| Tool                    | Purpose                                          | Key args                          |
+|-------------------------|--------------------------------------------------|-----------------------------------|
+| `browser_navigate`      | Open a URL                                        | `url`                             |
+| `browser_back`          | Navigate back in history                          | —                                 |
+| `browser_forward`       | Navigate forward in history                       | —                                 |
+| `browser_reload`        | Reload the current page                           | —                                 |
+| `browser_wait_for`      | Wait for a selector/state before continuing       | `selector`, `state`, `timeout`    |
+| `browser_get_content`   | Get full page text/HTML                           | —                                 |
+| `browser_get_text`      | Get text of a single element                      | `selector`                        |
+| `browser_get_attribute` | Read an attribute value of an element             | `selector`, `attribute`           |
+| `browser_get_links`     | Collect links (href/text) on the page             | `selector` (optional)             |
+| `browser_check_element` | Test if an element exists / is visible            | `selector`                        |
+| `browser_screenshot`    | Capture a screenshot                              | `filename`, `selector` (optional) |
+| `browser_click`         | Click an element                                  | `selector`                        |
+| `browser_hover`         | Hover over an element                             | `selector`                        |
+| `browser_scroll`        | Scroll the page or an element                     | `selector`/`x`/`y`                |
+| `browser_press_key`     | Send a single keyboard key                        | `key`, `selector` (optional)      |
+| `browser_evaluate`      | Run JavaScript in the page context                | `script`                          |
+| `browser_fill_field`    | Set an input's value in one shot                  | `selector`, `value`               |
+| `browser_type`          | Type text key-by-key into a field                 | `selector`, `text`                |
+| `browser_select_option` | Choose an option in a `<select>`                  | `selector`, `value`               |
+| `browser_set_checkbox`  | Check or uncheck a checkbox                        | `selector`, `checked`             |
+| `browser_upload_file`   | Attach a file to a file input                     | `selector`, `path`                |
+| `browser_handle_dialog` | Accept/dismiss alert/confirm/prompt dialogs       | `action`, `text` (optional)       |
+| `browser_list_tabs`     | Enumerate open tabs                               | —                                 |
+| `browser_switch_tab`    | Focus a specific tab                              | `index`/`id`                      |
+| `browser_new_tab`       | Open a new tab                                     | `url` (optional)                  |
+| `browser_close_session` | Close the browser and free resources              | —                                 |
+
+Notes:
+- Prefer `browser_fill_field` for simple value-setting; use `browser_type` when the
+  page needs per-keystroke input events (autocomplete, validation-on-keyup).
+- `browser_evaluate` runs arbitrary JS — never use it to bypass the HITL/approval
+  rules above (no submitting payment forms or destructive actions without an
+  `Approved/browser/` file).

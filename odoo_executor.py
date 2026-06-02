@@ -8,6 +8,7 @@ task to Done/odoo/ and writes to the log and dashboard.
 Never calls action_post — invoice stays in draft state always.
 """
 
+import os
 import re
 import shutil
 import socket
@@ -16,13 +17,15 @@ import xmlrpc.client
 from datetime import datetime
 from pathlib import Path
 
+from filelock import FileLock
+
 ROOT  = Path(__file__).parent
 VAULT = ROOT / "vault" / "AI_Employee_Vault"
 
-ODOO_URL      = "http://localhost:8069"
-ODOO_DB       = "odoo"
-ODOO_USERNAME = "admin"
-ODOO_PASSWORD = "admin"
+ODOO_URL      = os.getenv("ODOO_URL", "http://localhost:8069")
+ODOO_DB       = os.getenv("ODOO_DB", "odoo")
+ODOO_USERNAME = os.getenv("ODOO_USERNAME", "admin")
+ODOO_PASSWORD = os.getenv("ODOO_PASSWORD", "admin")
 
 # TASK-7.2 / TASK-7.4: retry + alert utilities
 _WATCHERS_DIR = ROOT / "watchers"
@@ -30,6 +33,7 @@ if str(_WATCHERS_DIR) not in sys.path:
     sys.path.insert(0, str(_WATCHERS_DIR))
 from retry_handler import TransientError, with_retry, write_log_alert  # noqa: E402
 from audit_logger import log_action  # noqa: E402  TASK-8.4
+from vault_utils import append_log as _vu_append_log  # noqa: E402
 
 # Actions that MUST NOT be auto-retried (TASK-7.4 — payment safety)
 PAYMENT_ACTIONS = frozenset({"post_payment", "register_payment", "action_post"})
@@ -128,25 +132,29 @@ def _parse_table_field(text: str, field: str) -> str:
 
 
 def _append_log(message: str) -> None:
-    today    = datetime.now().strftime("%Y-%m-%d")
-    log_file = VAULT / "Logs" / f"log_{today}.md"
-    ts       = datetime.now().strftime("%H:%M:%S")
-    entry    = f"\n[{ts}] [odoo] {message}\n"
-    with open(log_file, "a", encoding="utf-8") as f:
-        f.write(entry)
+    ts    = datetime.now().strftime("%H:%M:%S")
+    entry = f"[{ts}] [odoo] {message}"
+    _vu_append_log(VAULT / "Logs", entry)
 
 
 def _update_dashboard(message: str) -> None:
     dashboard = VAULT / "Dashboard.md"
     today     = datetime.now().strftime("%Y-%m-%d")
-    entry     = f"\n| Odoo | {message} | {today} |\n"
-    text      = dashboard.read_text(encoding="utf-8")
-    text      = re.sub(
-        r"(\| Odoo \|).*?(\| \d{4}-\d{2}-\d{2} \|)",
-        f"| Odoo | {message} | {today} |",
-        text,
-    )
-    dashboard.write_text(text, encoding="utf-8")
+    new_row   = f"| Odoo | {message} | {today} |"
+    lock_path = str(dashboard.resolve()) + ".lock"
+    with FileLock(lock_path, timeout=10):
+        text = dashboard.read_text(encoding="utf-8")
+        updated = re.sub(
+            r"(\| Odoo \|).*?(\| \d{4}-\d{2}-\d{2} \|)",
+            new_row,
+            text,
+        )
+        # If no existing row matched, append the row
+        if updated == text:
+            updated = text.rstrip() + f"\n{new_row}\n"
+        tmp = dashboard.with_suffix(".tmp")
+        tmp.write_text(updated, encoding="utf-8")
+        os.replace(str(tmp), str(dashboard))
 
 
 # ── Main executor ─────────────────────────────────────────────────────────────
@@ -170,19 +178,43 @@ def run_odoo_task(file_path: Path) -> bool:
     content = file_path.read_text(encoding="utf-8")
     action  = meta.get("action", "").strip()
 
-    if action != "create_invoice":
+    if action not in ("create_invoice", "odoo"):
         print(f"[ODOO] Unsupported action '{action}' — skipping")
         return False
 
-    # Parse invoice details from markdown table
-    partner_name = _parse_table_field(content, "Customer") or meta.get("partner_name", "")
-    partner_email = _parse_table_field(content, "Email") or meta.get("partner_email", "")
-    product_name = _parse_table_field(content, "Product") or meta.get("product", "")
-    amount_raw   = _parse_table_field(content, "Unit Price") or meta.get("amount", "0")
-    invoice_date = _parse_table_field(content, "Invoice Date") or datetime.now().strftime("%Y-%m-%d")
+    # Parse invoice details: markdown table → frontmatter → JSON payload (in priority order).
+    import json as _json
+    _json_payload: dict = {}
+    try:
+        m = re.search(r"```json\s*([\s\S]*?)```", content)
+        if m:
+            _json_payload = _json.loads(m.group(1))
+    except Exception:
+        pass
 
-    # Clean amount — strip $ and commas
+    partner_name  = (_parse_table_field(content, "Customer")
+                     or meta.get("partner_name", "")
+                     or str(_json_payload.get("customer", "")))
+    partner_email = (_parse_table_field(content, "Email")
+                     or meta.get("partner_email", "")
+                     or str(_json_payload.get("email", "")))
+    product_name  = (_parse_table_field(content, "Product")
+                     or meta.get("product", "")
+                     or str(_json_payload.get("product", "")))
+    amount_raw    = (_parse_table_field(content, "Unit Price")
+                     or str(meta.get("unit_price", ""))
+                     or str(meta.get("amount", ""))
+                     or str(_json_payload.get("unit_price", ""))
+                     or str(_json_payload.get("total", "0")))
+    qty_raw       = (_parse_table_field(content, "Quantity")
+                     or str(meta.get("quantity", "1"))
+                     or str(_json_payload.get("quantity", "1")))
+    invoice_date  = (_parse_table_field(content, "Invoice Date")
+                     or datetime.now().strftime("%Y-%m-%d"))
+
+    # Clean amount and quantity — strip $ and commas
     amount = float(re.sub(r"[^\d.]", "", amount_raw) or "0")
+    quantity = float(re.sub(r"[^\d.]", "", qty_raw) or "1") or 1
 
     if not partner_name or not product_name or amount <= 0:
         print(f"[ODOO] Missing required fields — partner={partner_name}, product={product_name}, amount={amount}")
@@ -237,9 +269,9 @@ def run_odoo_task(file_path: Path) -> bool:
 
         # Build invoice line
         if product_id:
-            line = [0, 0, {"product_id": product_id, "quantity": 1, "price_unit": amount}]
+            line = [0, 0, {"product_id": product_id, "quantity": quantity, "price_unit": amount}]
         else:
-            line = [0, 0, {"name": product_name, "quantity": 1, "price_unit": amount}]
+            line = [0, 0, {"name": product_name, "quantity": quantity, "price_unit": amount}]
 
         # Create draft invoice — NEVER call action_post (enforced by PAYMENT_ACTIONS guard)
         invoice_id = odoo_rpc(models, ODOO_DB, uid, ODOO_PASSWORD,

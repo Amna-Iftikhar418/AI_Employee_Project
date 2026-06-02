@@ -21,9 +21,12 @@ import re
 import sys
 from pathlib import Path
 
-VAULT = Path("vault/AI_Employee_Vault")
+# Resolve all paths from the script's own location so the hook works
+# regardless of which directory Claude Code's shell happens to be in.
+_ROOT = Path(__file__).resolve().parents[2]  # …/.claude/hooks/ → project root
+VAULT = _ROOT / "vault" / "AI_Employee_Vault"
 DONE_DIR = VAULT / "Done"
-STATE_FILE = Path(".claude/hooks/.task_state.json")
+STATE_FILE = _ROOT / ".claude" / "hooks" / ".task_state.json"
 MAX_ITERATIONS = 10
 
 # Task file patterns that are expected to move to Done/ on completion.

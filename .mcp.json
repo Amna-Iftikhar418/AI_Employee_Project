@@ -36,7 +36,7 @@
       "args": [
         "@playwright/mcp@latest",
         "--user-data-dir",
-        "C:\Users\LAPTOP VILLA\.playwright-profiles\ai-employee"
+        "${USERPROFILE}/.playwright-profiles/ai-employee"
       ]
     },
     "odoo": {
@@ -49,10 +49,10 @@
         "odoo-mcp"
       ],
       "env": {
-        "ODOO_URL": "http://localhost:8069",
-        "ODOO_DB": "odoo",
-        "ODOO_USERNAME": "admin",
-        "ODOO_PASSWORD": "admin",
+        "ODOO_URL": "${ODOO_URL}",
+        "ODOO_DB": "${ODOO_DB}",
+        "ODOO_USERNAME": "${ODOO_USERNAME}",
+        "ODOO_PASSWORD": "${ODOO_PASSWORD}",
         "ODOO_API_VERSION": "json-rpc"
       }
     }

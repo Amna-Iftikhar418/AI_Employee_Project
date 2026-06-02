@@ -28,6 +28,34 @@ const DEBUG_DIR   = path.join(__dirname, 'linkedin_debug');
 
 function log(msg) { console.error(msg); }
 
+// ── Kill existing Chromium processes using our profile ────────────────────────
+function killExistingBrowserSessions() {
+    const { execSync } = require('child_process');
+    try {
+        if (process.platform === 'win32') {
+            // Find chrome.exe processes whose command line references our profile dir
+            const out = execSync(
+                'wmic process where "name=\'chrome.exe\'" get ProcessId,CommandLine /format:csv',
+                { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }
+            );
+            for (const line of out.split('\n')) {
+                if (line.toLowerCase().includes('linkedin-profile')) {
+                    const parts = line.split(',');
+                    const pid = parts[parts.length - 1]?.trim();
+                    if (pid && /^\d+$/.test(pid)) {
+                        try {
+                            execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' });
+                            log(`[CLEANUP] Killed stale Chromium PID: ${pid}`);
+                        } catch (_) {}
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        log(`[CLEANUP] Session kill check failed (non-fatal): ${e.message}`);
+    }
+}
+
 // ── Profile lock cleanup (prevents Chrome exit code 21 on Windows) ────────────
 function cleanProfileLocks() {
     const locks = ['SingletonLock', 'SingletonSocket', 'SingletonCookie'];
@@ -114,7 +142,8 @@ const POST_BTN_SELECTORS = [
 
 async function postToLinkedIn(content) {
 
-    // 1. Clean profile lock files BEFORE launching Chrome
+    // 1. Kill stale sessions, then clean lock files
+    killExistingBrowserSessions();
     cleanProfileLocks();
 
     log('Launching browser with persistent profile...');
