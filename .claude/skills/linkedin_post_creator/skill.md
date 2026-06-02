@@ -33,6 +33,7 @@ When the operator requests a LinkedIn post creation, OR when the daily scheduler
 - Max 5 posts per day unless `--force` is passed
 - Max 3 hashtags, max 3 emojis in post content
 - NEVER generate duplicate topics from the last 7 days
+- **NEVER ask the user for a topic, title, or any input before starting.** Begin Step 0 immediately. If no topic was provided, auto-select from the rotation list in Step 1 — do not pause to ask.
 
 ---
 
@@ -401,6 +402,7 @@ If any step fails:
 10. On operator YES → move file to Approved/linkedin/ → immediately invoke linkedin_publisher skill (Playwright MCP)
 11. On operator NO → move file to Rejected/linkedin/
 
+Do NOT ask the operator for a topic, title, or any clarifying input — start immediately.
 Do NOT interrupt or ask for confirmation during steps 1–8.
 Do NOT skip Step 5 (Plan creation).
 Do NOT create post file if Plan creation failed.

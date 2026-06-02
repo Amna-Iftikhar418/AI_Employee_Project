@@ -1,9 +1,10 @@
 'use client';
 
+import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Target, RefreshCw } from 'lucide-react';
+import { Target, RefreshCw, Pencil, Check, X } from 'lucide-react';
 import RevenueBar from '@/components/RevenueBar';
-import { fetchGoals } from '@/lib/api';
+import { fetchGoals, saveGoalsRevenue } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 // ── markdown table parser ─────────────────────────────────────────────────────
@@ -119,17 +120,58 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-// ── revenue targets (16.2) ────────────────────────────────────────────────────
+// ── revenue targets (editable) ───────────────────────────────────────────────
 
-function RevenueTargets({ rows }: { rows: Array<Record<string, string>> }) {
+type EditRow = { period: string; target: string; current: string };
+
+function RevenueTargets({
+  rows,
+  onSave,
+}: {
+  rows: Array<Record<string, string>>;
+  onSave: (rows: EditRow[]) => Promise<void>;
+}) {
   if (rows.length === 0)
     return <p className="text-[#4c7273] text-sm">No revenue data found.</p>;
 
-  // header key detection (column names vary slightly)
   const keys = Object.keys(rows[0]);
   const targetKey = keys.find(k => /target/i.test(k)) ?? keys[1] ?? '';
   const currentKey = keys.find(k => /current/i.test(k)) ?? keys[2] ?? '';
   const periodKey = keys[0];
+
+  const [editing, setEditing] = useState(false);
+  const [editData, setEditData] = useState<EditRow[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const startEdit = () => {
+    setEditData(
+      rows.map(r => ({
+        period: r[periodKey] ?? '',
+        target: parseMoney(r[targetKey] ?? '').toString(),
+        current: parseMoney(r[currentKey] ?? '').toString(),
+      })),
+    );
+    setError('');
+    setEditing(true);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      await onSave(editData);
+      setEditing(false);
+    } catch {
+      setError('Save failed — check the server.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateRow = (i: number, field: 'target' | 'current', value: string) => {
+    setEditData(prev => prev.map((r, idx) => idx === i ? { ...r, [field]: value } : r));
+  };
 
   return (
     <div className="rounded-xl border border-[#4c7273]/30 overflow-hidden bg-[#042630]">
@@ -142,25 +184,83 @@ function RevenueTargets({ rows }: { rows: Array<Record<string, string>> }) {
               </th>
             ))}
             <th className="px-4 py-3 text-left text-xs font-semibold text-[#4c7273] uppercase tracking-wide w-48">Progress</th>
+            <th className="px-4 py-3 w-24">
+              {!editing ? (
+                <button
+                  onClick={startEdit}
+                  className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border border-[#4c7273]/40 bg-[#042630] text-[#4c7273] hover:text-[#d0d6d6] hover:border-[#86b9b0]/50 transition-all"
+                >
+                  <Pencil className="w-3 h-3" /> Edit
+                </button>
+              ) : (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-50 transition-all"
+                  >
+                    <Check className="w-3 h-3" /> {saving ? '…' : 'Save'}
+                  </button>
+                  <button
+                    onClick={() => setEditing(false)}
+                    className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border border-[#4c7273]/40 text-[#4c7273] hover:text-rose-400 transition-all"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+            </th>
           </tr>
         </thead>
         <tbody className="divide-y divide-[#4c7273]/20">
           {rows.map((row, i) => {
-            const target = parseMoney(row[targetKey] ?? '');
-            const current = parseMoney(row[currentKey] ?? '');
+            const ed = editData[i];
+            const target = editing ? (parseFloat(ed?.target ?? '0') || 0) : parseMoney(row[targetKey] ?? '');
+            const current = editing ? (parseFloat(ed?.current ?? '0') || 0) : parseMoney(row[currentKey] ?? '');
+
             return (
               <tr key={i} className="hover:bg-[#041421] transition-colors">
                 {keys.map(k => (
-                  <td key={k} className="px-4 py-3 text-xs text-[#d0d6d6]">{row[k] || '—'}</td>
+                  <td key={k} className="px-4 py-3 text-xs text-[#d0d6d6]">
+                    {editing && k === targetKey ? (
+                      <div className="flex items-center gap-1">
+                        <span className="text-[#4c7273]">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={ed?.target ?? ''}
+                          onChange={e => updateRow(i, 'target', e.target.value)}
+                          className="w-24 bg-[#041421] border border-[#4c7273]/50 rounded px-2 py-1 text-xs text-[#d0d6d6] focus:outline-none focus:border-[#86b9b0]"
+                        />
+                      </div>
+                    ) : editing && k === currentKey ? (
+                      <div className="flex items-center gap-1">
+                        <span className="text-[#4c7273]">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={ed?.current ?? ''}
+                          onChange={e => updateRow(i, 'current', e.target.value)}
+                          className="w-24 bg-[#041421] border border-[#4c7273]/50 rounded px-2 py-1 text-xs text-[#d0d6d6] focus:outline-none focus:border-[#86b9b0]"
+                        />
+                      </div>
+                    ) : (
+                      row[k] || '—'
+                    )}
+                  </td>
                 ))}
                 <td className="px-4 py-4">
                   <RevenueBar current={current} target={target} label={row[periodKey]} currency="$" />
                 </td>
+                <td />
               </tr>
             );
           })}
         </tbody>
       </table>
+      {error && (
+        <p className="px-4 py-2 text-xs text-rose-400 border-t border-[#4c7273]/20">{error}</p>
+      )}
     </div>
   );
 }
@@ -395,6 +495,11 @@ export default function GoalsPage() {
     queryClient.invalidateQueries({ queryKey: ['goals'] });
   };
 
+  const handleSaveRevenue = async (rows: EditRow[]) => {
+    await saveGoalsRevenue(rows);
+    queryClient.invalidateQueries({ queryKey: ['goals'] });
+  };
+
   if (isLoading) {
     return (
       <div className="p-6 max-w-7xl mx-auto min-h-screen bg-[#041421]">
@@ -464,7 +569,7 @@ export default function GoalsPage() {
 
       {/* Revenue targets */}
       <Section title="Revenue Targets">
-        <RevenueTargets rows={revenueRows} />
+        <RevenueTargets rows={revenueRows} onSave={handleSaveRevenue} />
       </Section>
 
       {/* Key metrics */}

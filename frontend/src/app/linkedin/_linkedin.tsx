@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Share2, Plus, Hash, FileText, Calendar, ExternalLink, Trash2, Loader2 } from 'lucide-react';
+import { Share2, Plus, Hash, FileText, Calendar, ExternalLink, Trash2, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
@@ -10,8 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import TriggerButton from '@/components/TriggerButton';
-import { fetchDomain, deleteVaultFile, approvePending, rejectPending, markLinkedInPublished, DomainFile } from '@/lib/api';
+import { fetchDomain, deleteVaultFile, approvePending, rejectPending, markLinkedInPublished, DomainFile, triggerAction } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -85,6 +84,123 @@ function statusLabel(stage: string): string {
     rejected: 'Rejected',
   };
   return map[stage.toLowerCase()] ?? stage;
+}
+
+// ── create post dialog ────────────────────────────────────────────────────────
+
+function CreatePostDialog() {
+  const [open, setOpen] = useState(false);
+  const [topic, setTopic] = useState('');
+  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [errorMsg, setErrorMsg] = useState('');
+
+  const handleCreate = async () => {
+    setStatus('loading');
+    setErrorMsg('');
+    try {
+      await triggerAction('linkedin', topic.trim() ? { topic: topic.trim() } : {});
+      setStatus('success');
+      setTimeout(() => {
+        setOpen(false);
+        setStatus('idle');
+        setTopic('');
+      }, 1400);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to queue post');
+      setStatus('error');
+    }
+  };
+
+  const handleClose = (val: boolean) => {
+    if (status === 'loading') return;
+    setOpen(val);
+    if (!val) { setTopic(''); setStatus('idle'); setErrorMsg(''); }
+  };
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-indigo-600/30 border border-indigo-500/40 text-indigo-200 hover:bg-indigo-600/50 transition-all"
+      >
+        <Plus className="w-4 h-4" />
+        Create LinkedIn Post
+      </button>
+
+      <Dialog open={open} onOpenChange={handleClose}>
+        <DialogContent className="w-[min(480px,calc(100vw-2rem))] bg-[#042630] border border-[#4c7273]/30 text-[#d0d6d6] p-0 overflow-hidden">
+          <DialogHeader className="px-5 pt-5 pb-4 border-b border-[#4c7273]/20">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-blue-500/15 border border-blue-500/25 flex items-center justify-center shrink-0">
+                <Share2 className="w-4 h-4 text-blue-400" />
+              </div>
+              <div>
+                <DialogTitle className="text-sm font-semibold text-[#d0d6d6]">
+                  Create LinkedIn Post
+                </DialogTitle>
+                <p className="text-xs text-[#4c7273] mt-0.5">
+                  AI will generate a post and send it for your approval
+                </p>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="px-5 py-4 space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-[#86b9b0] uppercase tracking-wide">
+                Post Topic
+                <span className="ml-1.5 text-[#4c7273] font-normal normal-case tracking-normal">(optional)</span>
+              </label>
+              <input
+                type="text"
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && status === 'idle' && handleCreate()}
+                placeholder="e.g. AI automation in business"
+                disabled={status === 'loading' || status === 'success'}
+                className="w-full bg-[#041421] border border-[#4c7273]/30 rounded-lg px-3 py-2.5 text-sm text-[#d0d6d6] placeholder:text-[#4c7273] outline-none focus:border-[#86b9b0]/50 transition-colors disabled:opacity-50"
+                autoFocus
+              />
+              <p className="text-[11px] text-[#4c7273]">
+                Leave blank to auto-select from the rotation list
+              </p>
+            </div>
+
+            {errorMsg && (
+              <div className="flex items-center gap-2 rounded-lg bg-rose-500/10 border border-rose-500/30 px-3 py-2 text-xs text-rose-300">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                {errorMsg}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 px-5 pb-5">
+            <button
+              onClick={() => handleClose(false)}
+              disabled={status === 'loading'}
+              className="flex-1 h-9 rounded-lg text-sm font-medium bg-[#041421] hover:bg-[#04202e] text-[#4c7273] hover:text-[#86b9b0] border border-[#4c7273]/20 transition-all disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleCreate}
+              disabled={status === 'loading' || status === 'success'}
+              className={cn(
+                'flex-1 h-9 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-all disabled:opacity-60',
+                status === 'success'
+                  ? 'bg-emerald-600/80 text-white'
+                  : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white'
+              )}
+            >
+              {status === 'loading' && <Loader2 className="w-4 h-4 animate-spin" />}
+              {status === 'success' && <CheckCircle2 className="w-4 h-4" />}
+              {status === 'success' ? 'Queued!' : status === 'loading' ? 'Queuing…' : 'Create Post'}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
 }
 
 // ── post card ─────────────────────────────────────────────────────────────────
@@ -429,11 +545,7 @@ export default function LinkedInPage() {
           </h1>
           <p className="text-sm text-[#4c7273] mt-0.5">AI-generated LinkedIn posts pipeline</p>
         </div>
-        <TriggerButton
-          action="linkedin"
-          label="Create LinkedIn Post Now"
-          icon={<Plus className="w-4 h-4" />}
-        />
+        <CreatePostDialog />
       </div>
 
       {/* Filter tabs */}

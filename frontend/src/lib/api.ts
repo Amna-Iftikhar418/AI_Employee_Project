@@ -40,10 +40,14 @@ export function fetchTasks(): Promise<DomainMatrix[]> {
   return get('/vault/tasks');
 }
 
+export type LogStatus = 'success' | 'error' | 'warning' | 'info';
+
 export interface LogEntry {
   time: string;
   domain: string;
   action: string;
+  label: string;
+  status: LogStatus;
   result: string;
   raw: string;
 }
@@ -79,6 +83,12 @@ export interface GoalsData {
 
 export function fetchGoals(): Promise<GoalsData> {
   return get('/vault/goals');
+}
+
+export function saveGoalsRevenue(
+  rows: Array<{ period: string; target: string; current: string }>,
+): Promise<{ success: boolean }> {
+  return post('/vault/goals', { rows });
 }
 
 export interface DomainFile {
