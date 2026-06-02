@@ -1,17 +1,14 @@
 'use client';
 
-import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import {
   Mail, MessageCircle, Share2, Building2, Globe, CalendarDays, Camera, CheckCircle2, WifiOff,
 } from 'lucide-react';
 import KpiCard from '@/components/KpiCard';
-import RevenueBar from '@/components/RevenueBar';
 import DomainStatusGrid from '@/components/DomainStatusGrid';
 import ActivityFeed from '@/components/ActivityFeed';
 import TiltCard from '@/components/three/TiltCard';
-import { DynamicHeroMesh } from '@/components/three/SceneLoader';
-import { fetchTasks, fetchGoals, fetchHealth, DomainMatrix } from '@/lib/api';
+import { fetchTasks, fetchHealth, DomainMatrix } from '@/lib/api';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -78,32 +75,6 @@ function KpiRow() {
   );
 }
 
-function RevenueSection() {
-  const { data: goals } = useQuery({ queryKey: ['goals'], queryFn: fetchGoals });
-  const fm = goals?.frontmatter ?? {};
-  const current = Number(fm['mtd_revenue'] ?? fm['current_revenue'] ?? fm['revenue_mtd'] ?? 0);
-  const target = Number(fm['revenue_target'] ?? fm['monthly_target'] ?? fm['target'] ?? 0);
-
-  const renderBar = (c: number, t: number) => (
-    <div className="h-full flex flex-col">
-      <p className="text-sm font-semibold text-[#d0d6d6] mb-4">Monthly Revenue</p>
-      <div className="flex-1 flex items-end">
-        <RevenueBar current={c} target={t} />
-      </div>
-    </div>
-  );
-
-  if (target === 0) {
-    const match = goals?.content?.match(/(?:mtd|current)[^\d]*(\d[\d,]*)/i);
-    const tMatch = goals?.content?.match(/target[^\d]*(\d[\d,]*)/i);
-    const c = match ? Number(match[1].replace(/,/g, '')) : 0;
-    const t = tMatch ? Number(tMatch[1].replace(/,/g, '')) : 0;
-    if (t > 0) return renderBar(c, t);
-    return null;
-  }
-
-  return renderBar(current, target);
-}
 
 function HealthChip() {
   const { data } = useQuery({ queryKey: ['health'], queryFn: fetchHealth, refetchInterval: 30_000 });
@@ -162,39 +133,21 @@ export default function DashboardPage() {
             <HealthChip />
           </div>
         </div>
-        <DynamicHeroMesh />
       </header>
 
       {/* Bento grid */}
       <div className="grid grid-cols-12 gap-4">
 
-        {/* KPI cards — 9 cols */}
-        <div className="col-span-12 lg:col-span-9">
+        {/* KPI cards — full width */}
+        <div className="col-span-12">
           <section aria-label="Domain KPIs">
             <SectionLabel>Task Counts by Domain</SectionLabel>
             <KpiRow />
           </section>
         </div>
 
-        {/* Revenue panel — 3 cols, spans 2 rows */}
-        <div className="col-span-12 lg:col-span-3 lg:row-span-2">
-          <SectionLabel>Revenue</SectionLabel>
-          <div className="h-full bg-[#042630] rounded-2xl border border-[#4c7273]/25 p-5 relative overflow-hidden">
-            {/* Subtle radial glow behind bar */}
-            <div
-              className="absolute inset-0 rounded-2xl pointer-events-none"
-              style={{
-                background: 'radial-gradient(ellipse at 50% 80%, rgba(134,185,176,0.07) 0%, transparent 70%)',
-              }}
-            />
-            <div className="relative">
-              <RevenueSection />
-            </div>
-          </div>
-        </div>
-
-        {/* Domain status — 9 cols on row 2 */}
-        <div className="col-span-12 lg:col-span-9">
+        {/* Domain status — full width */}
+        <div className="col-span-12">
           <section aria-label="Domain status overview">
             <SectionLabel>Domain Status</SectionLabel>
             <DomainStatusGrid />
