@@ -51,7 +51,7 @@ export default function TaskCountsCarousel() {
   const pending = domain ? pendingCount(matrix, domain.key) : 0;
 
   return (
-    <div className="flex flex-col items-start select-none">
+    <div className="flex flex-col items-center select-none pt-6">
       {/* ── Deck — stack never moves, only top card content fades ── */}
       <div
         className="relative cursor-pointer"
