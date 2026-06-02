@@ -2,14 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import {
-  Mail, MessageCircle, Share2, Building2, Globe, CalendarDays, Camera, CheckCircle2, WifiOff, X, Activity,
-} from 'lucide-react';
-import KpiCard from '@/components/KpiCard';
+import { CheckCircle2, WifiOff, X, Activity } from 'lucide-react';
 import DomainStatusGrid from '@/components/DomainStatusGrid';
 import ActivityFeed from '@/components/ActivityFeed';
-import TiltCard from '@/components/three/TiltCard';
-import { fetchTasks, fetchHealth, DomainMatrix } from '@/lib/api';
+import TaskCountsCarousel from '@/components/TaskCountsCarousel';
+import { fetchHealth } from '@/lib/api';
 
 // ── activity persistence ──────────────────────────────────────────────────────
 
@@ -30,30 +27,6 @@ function loadActivityCleared(): boolean {
   try { return localStorage.getItem(LS_ACTIVITY_CLEARED) === todayStr(); } catch { return false; }
 }
 
-// ── helpers ───────────────────────────────────────────────────────────────────
-
-function totalTasks(matrix: DomainMatrix[], domain: string): number {
-  const row = matrix.find((d) => d.domain === domain);
-  if (!row) return 0;
-  return Object.values(row.stages).reduce((s, v) => s + v.count, 0);
-}
-
-function pendingCount(matrix: DomainMatrix[], domain: string): number {
-  const row = matrix.find((d) => d.domain === domain);
-  return (row?.stages['Pending_Approval']?.count ?? 0) + (row?.stages['Needs_Action']?.count ?? 0);
-}
-
-const KPI_DOMAINS = [
-  { key: 'email',     label: 'Gmail',     href: '/gmail',     icon: <Mail className="w-5 h-5" />,         from: '#ea4335', to: '#fbbc04' },
-  { key: 'whatsapp',  label: 'WhatsApp',  href: '/whatsapp',  icon: <MessageCircle className="w-5 h-5" />, from: '#25d366', to: '#128c7e' },
-  { key: 'linkedin',  label: 'LinkedIn',  href: '/linkedin',  icon: <Share2 className="w-5 h-5" />,        from: '#0a66c2', to: '#004182' },
-  { key: 'facebook',  label: 'Facebook',  href: '/social',    icon: <Share2 className="w-5 h-5" />,        from: '#1877f2', to: '#0a4fc4' },
-  { key: 'instagram', label: 'Instagram', href: '/social',    icon: <Camera className="w-5 h-5" />,        from: '#e1306c', to: '#833ab4' },
-  { key: 'odoo',      label: 'Odoo',      href: '/odoo',      icon: <Building2 className="w-5 h-5" />,     from: '#714b67', to: '#a855f7' },
-  { key: 'browser',   label: 'Browser',   href: '/browser',   icon: <Globe className="w-5 h-5" />,         from: '#f97316', to: '#ef4444' },
-  { key: 'scheduler', label: 'Scheduler', href: '/scheduler', icon: <CalendarDays className="w-5 h-5" />,  from: '#8b5cf6', to: '#6366f1' },
-];
-
 // ── section label ─────────────────────────────────────────────────────────────
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -68,33 +41,6 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 // ── sub-components ────────────────────────────────────────────────────────────
-
-function KpiRow() {
-  const { data: matrix = [] } = useQuery({ queryKey: ['tasks'], queryFn: fetchTasks });
-  return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-      {KPI_DOMAINS.map(({ key, label, href, icon, from, to }) => {
-        const total = totalTasks(matrix, key);
-        const pending = pendingCount(matrix, key);
-        return (
-          <TiltCard key={key} className="rounded-2xl">
-            <KpiCard
-              title={label}
-              value={total}
-              subtitle={pending > 0 ? `${pending} pending` : 'Up to date'}
-              subtitleHref={pending > 0 ? '/pending' : undefined}
-              icon={icon}
-              gradientFrom={from}
-              gradientTo={to}
-              href={href}
-            />
-          </TiltCard>
-        );
-      })}
-    </div>
-  );
-}
-
 
 function HealthChip() {
   const { data } = useQuery({ queryKey: ['health'], queryFn: fetchHealth, refetchInterval: 30_000 });
@@ -180,11 +126,11 @@ export default function DashboardPage() {
       {/* Bento grid */}
       <div className="grid grid-cols-12 gap-4">
 
-        {/* KPI cards — full width */}
+        {/* Task counts carousel — full width */}
         <div className="col-span-12">
           <section aria-label="Domain KPIs">
             <SectionLabel>Task Counts by Domain</SectionLabel>
-            <KpiRow />
+            <TaskCountsCarousel />
           </section>
         </div>
 
