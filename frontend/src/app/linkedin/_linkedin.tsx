@@ -508,6 +508,7 @@ export default function LinkedInPage() {
   const { data: rawFiles = [], isLoading } = useQuery({
     queryKey: ['domain', 'linkedin'],
     queryFn: () => fetchDomain('linkedin'),
+    refetchInterval: 15_000,
   });
 
   // Only show real LinkedIn posts — filter out trigger task files (TASK_*)

@@ -51,9 +51,8 @@ export default function BrowserTaskCard({
   const actionStyle = ACTION_STYLE[action] ?? 'bg-slate-500/20 text-slate-300 border-slate-500/40';
   const canDelete = true;
   const isWriteAction = action === 'fill-form' || action === 'submit';
-  // Read-only tasks auto-execute — only write tasks need human approve/reject
-  const isPending = file.stage === 'Pending_Approval' ||
-    (file.stage === 'Needs_Action' && isWriteAction);
+  // Show approve/reject for any Needs_Action or Pending_Approval task so stuck cards can be manually unblocked
+  const isPending = file.stage === 'Pending_Approval' || file.stage === 'Needs_Action';
 
   const stageColor =
     file.stage === 'Done'
@@ -134,6 +133,13 @@ export default function BrowserTaskCard({
               </button>
             ))}
           </div>
+        )}
+
+        {/* Warning for actions that require manual Claude execution */}
+        {isWriteAction && isPending && (
+          <p className="text-[10px] text-amber-400/80 bg-amber-500/10 border border-amber-500/20 rounded px-2 py-1">
+            ⚠ fill-form / submit tasks require manual execution via the browser_handler Claude skill — approving will reject them automatically.
+          </p>
         )}
 
         {/* Approve / Reject — Pending_Approval and Needs_Action tasks */}

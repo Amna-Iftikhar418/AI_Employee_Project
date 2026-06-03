@@ -10,6 +10,26 @@ const MIME: Record<string, string> = {
   '.webp': 'image/webp',
 };
 
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ filename: string }> }
+) {
+  const { filename } = await params;
+  const safe = path.basename(decodeURIComponent(filename));
+  const filepath = path.join(VAULT_ROOT, 'Screenshots', safe);
+
+  if (!filepath.startsWith(path.resolve(path.join(VAULT_ROOT, 'Screenshots')))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  try {
+    await fs.unlink(filepath);
+    return NextResponse.json({ success: true });
+  } catch {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+}
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ filename: string }> }

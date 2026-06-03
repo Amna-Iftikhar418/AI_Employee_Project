@@ -892,30 +892,26 @@ status: pending
 
         elif task_type == "browser_task":
             current_status = self.get_file_status(task_file_path)
-            if current_status in ("rejected", "completed", "pending_approval", "awaiting_approval"):
+            if current_status in ("rejected", "completed", "pending_approval", "awaiting_approval", "processing"):
                 return
             # Read action from frontmatter
             content = task_file_path.read_text(encoding="utf-8")
             action_match = re.search(r"^action:\s*(\S+)", content, re.MULTILINE)
             browser_action = action_match.group(1).strip() if action_match else "navigate"
             if browser_action in ("navigate", "scrape"):
-                # Read-only: spawn browser_handler skill via Claude CLI (uses Playwright MCP)
-                self.write_log(task_name, "BROWSER_TRIGGERED", f"Spawning browser_handler skill for {browser_action}", domain="browser")
-                logger.info(f"Browser read-only task — spawning skill: {task_name}")
+                # Read-only: run directly via browser_executor (Playwright, no Claude spawn)
+                # Mark as processing immediately so re-scans skip this file while the thread runs
+                self.update_task_status(task_file_path, "processing")
+                self.write_log(task_name, "BROWSER_TRIGGERED", f"Running browser_executor for {browser_action}", domain="browser")
+                logger.info(f"Browser read-only task — running executor: {task_name}")
                 import threading
                 task_path_copy = task_file_path
                 def _run_browser():
-                    self.run_claude_skill(
-                        "browser_handler",
-                        task_path_copy,
-                        prompt=(
-                            f"Run the browser_handler skill on this browser task file:\n\n"
-                            f"{task_path_copy}\n\n"
-                            "It is a read-only navigate/scrape task. Navigate to the URL, "
-                            "get the page content, write the result to Plans/browser/, "
-                            "update Dashboard and Logs, then move the task to Done/browser/."
-                        ),
-                    )
+                    try:
+                        from browser_executor import run_browser_task
+                        run_browser_task(task_path_copy)
+                    except Exception as exc:
+                        logger.error(f"browser_executor failed for {task_name}: {exc}")
                 threading.Thread(target=_run_browser, daemon=True).start()
             else:
                 # Write task (fill-form, submit): route to Pending_Approval/browser/
@@ -1009,7 +1005,6 @@ status: pending
             "odoo_task": self.odoo_done,
             "social_task": self.social_done,
             "social_post": self.social_done,
-            "browser_task": self.browser_done,
         }
         done_dir = done_dir_map.get(task_type, self.email_done)
 
@@ -1043,29 +1038,6 @@ status: pending
                         failed_target = failed_dir / task_file_path.name
                         shutil.move(str(task_file_path), str(failed_target))
                         logger.info(f"Moved failed task to Failed/email/: {task_name}")
-        elif task_type == "browser_task":
-            # Browser write tasks approved by human — spawn browser_handler skill to execute
-            current_status = self.get_file_status(task_file_path)
-            if current_status == "completed":
-                return
-            logger.info(f"Browser approved task — spawning skill: {task_name}")
-            self.write_log(task_name, "BROWSER_APPROVED", "Spawning browser_handler skill for approved write task", domain="browser")
-            import threading
-            task_path_copy = task_file_path
-            def _run_approved_browser():
-                self.run_claude_skill(
-                    "browser_handler",
-                    task_path_copy,
-                    prompt=(
-                        f"Run the browser_handler skill on this approved browser task:\n\n"
-                        f"{task_path_copy}\n\n"
-                        "This is an approved write task (fill-form or submit). Execute the browser "
-                        "actions, take screenshots before and after, update Dashboard and Logs, "
-                        "then move the file to Done/browser/."
-                    ),
-                )
-            threading.Thread(target=_run_approved_browser, daemon=True).start()
-
         else:
             logger.info(f"Processing approved task: {task_name}")
             self.update_task_status(task_file_path, "completed")
@@ -1167,8 +1139,7 @@ status: pending
                 approved_files = (
                     list(self.email_approved.glob("TASK_*.md"))
                     + list(self.whatsapp_approved.glob("TASK_*.md"))
-                    + list(self.browser_approved.glob("TASK_*.md"))
-                    # Odoo and Social have dedicated executors in approved_watcher.py;
+                    # Browser, Odoo, and Social have dedicated executors in approved_watcher.py;
                     # scanning them here causes a race condition and wrong Done directory.
                 )
                 for file in approved_files:

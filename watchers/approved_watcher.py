@@ -61,6 +61,14 @@ except ImportError as e:
     print(f"[WARN] facebook_instagram_executor not available: {e}")
     SOCIAL_EXECUTOR_AVAILABLE = False
 
+# Import Browser executor directly (no Claude spawn)
+try:
+    from browser_executor import run_browser_task
+    BROWSER_EXECUTOR_AVAILABLE = True
+except ImportError as e:
+    print(f"[WARN] browser_executor not available: {e}")
+    BROWSER_EXECUTOR_AVAILABLE = False
+
 
 SEND_EMAIL_EXECUTOR     = ROOT / ".claude" / "commands" / "send_email_executor.py"
 PROCESS_APPROVED_EXECUTOR = ROOT / ".claude" / "commands" / "process_approved_executor.py"
@@ -174,6 +182,7 @@ APPROVED_ROOT     = ROOT / "vault" / "AI_Employee_Vault" / "Approved"
 APPROVED_LINKEDIN = APPROVED_ROOT / "linkedin"
 APPROVED_ODOO     = APPROVED_ROOT / "odoo"
 APPROVED_SOCIAL   = APPROVED_ROOT / "social"
+APPROVED_BROWSER  = APPROVED_ROOT / "browser"
 PROCESSED_FILE    = APPROVED_ROOT / ".processed_approved.json"
 CHECK_INTERVAL    = 5  # seconds between scans
 
@@ -231,6 +240,10 @@ def _get_file_type(file_path: Path) -> str:
     if name.startswith("social_post_"):
         return "social"
 
+    # Browser tasks
+    if name.startswith("task_browser_"):
+        return "browser_task"
+
     # Check frontmatter
     try:
         text = file_path.read_text(encoding="utf-8")
@@ -248,6 +261,8 @@ def _get_file_type(file_path: Path) -> str:
                     return "odoo"
                 if "type: social_post" in frontmatter:
                     return "social"
+                if "type: browser_task" in frontmatter:
+                    return "browser_task"
     except Exception:
         pass
 
@@ -269,6 +284,7 @@ def watch():
     APPROVED_LINKEDIN.mkdir(parents=True, exist_ok=True)
     APPROVED_ODOO.mkdir(parents=True, exist_ok=True)
     APPROVED_SOCIAL.mkdir(parents=True, exist_ok=True)
+    APPROVED_BROWSER.mkdir(parents=True, exist_ok=True)
 
     # Files successfully processed in previous runs (persisted to disk)
     persisted = _load_processed()
@@ -296,6 +312,10 @@ def watch():
             # Social tasks — handled by facebook_instagram_poster skill (TASK-3); collected here for routing
             if APPROVED_SOCIAL.exists():
                 all_files.extend(sorted(APPROVED_SOCIAL.glob("SOCIAL_POST_*.md")))
+
+            # Browser tasks — handled by browser_executor directly (Playwright)
+            if APPROVED_BROWSER.exists():
+                all_files.extend(sorted(APPROVED_BROWSER.glob("TASK_*.md")))
 
             # Email and WhatsApp tasks are handled exclusively by task_processor.py
             # to avoid race conditions and FileLock conflicts.
@@ -371,6 +391,13 @@ def watch():
                             run_social_post(file_path)
                         else:
                             print(f"[ERROR] facebook_instagram_executor not available — cannot process {file_path.name}")
+
+                    elif file_type in ("browser_task", "browser"):
+                        # Browser: Use direct Playwright executor (no Claude spawn)
+                        if BROWSER_EXECUTOR_AVAILABLE:
+                            run_browser_task(file_path)
+                        else:
+                            print(f"[ERROR] browser_executor not available — cannot process {file_path.name}")
 
                 except AuthError as e:
                     # Expired/invalid credentials are not the file's fault. Undo the

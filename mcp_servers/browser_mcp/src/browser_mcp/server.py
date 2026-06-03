@@ -112,7 +112,11 @@ def _get_page():
             _browser = _pw.chromium.launch(headless=_headless())
 
         if _page is None or _page.is_closed():
-            ctx = _browser.new_context(viewport={"width": 1280, "height": 720})
+            ctx = _browser.new_context(
+                viewport={"width": 1280, "height": 720},
+                locale="en-US",
+                extra_http_headers={"Accept-Language": "en-US,en;q=0.9"},
+            )
             _page = ctx.new_page()
             _page.set_default_timeout(_timeout())
             _attach_dialog_listener(_page)

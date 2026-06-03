@@ -139,6 +139,7 @@ export default function WhatsAppPage() {
   const { data: files = [], isLoading } = useQuery({
     queryKey: ['domain', 'whatsapp'],
     queryFn: () => fetchDomain('whatsapp'),
+    refetchInterval: 15_000,
   });
 
   const handleDelete = () => {

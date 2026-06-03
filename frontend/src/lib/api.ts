@@ -149,6 +149,12 @@ export function fetchScreenshots(): Promise<ScreenshotsResponse> {
   return get('/vault/screenshots');
 }
 
+export function deleteScreenshot(src: string): Promise<{ success: boolean }> {
+  const filename = src.split('/').pop() ?? '';
+  return fetch(`/api/vault/screenshots/${filename}`, { method: 'DELETE' })
+    .then((r) => r.json() as Promise<{ success: boolean }>);
+}
+
 export interface SocialTokenStatus {
   configured: boolean;
   valid: boolean;

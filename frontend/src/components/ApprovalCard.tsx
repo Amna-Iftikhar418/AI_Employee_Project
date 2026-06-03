@@ -4,8 +4,10 @@ import { useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import {
   CheckCircle2, XCircle, Loader2, Mail, MessageCircle, Share2,
-  Building2, Globe, Camera, AlertCircle, ChevronRight,
+  Building2, Globe, Camera, AlertCircle, ChevronRight, Eye, Pencil,
 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -45,6 +47,7 @@ export default function ApprovalCard({ file, onApproved, onRejected }: ApprovalC
   const [showRejectReason, setShowRejectReason] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [error, setError] = useState('');
+  const [previewMode, setPreviewMode] = useState(true);
 
   const color = DOMAIN_COLORS[file.domain] ?? '#6366f1';
   const waitingText = formatDistanceToNow(new Date(file.createdAt), { addSuffix: true });
@@ -143,7 +146,7 @@ export default function ApprovalCard({ file, onApproved, onRejected }: ApprovalC
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
           showCloseButton
-          className="w-[min(560px,calc(100vw-2rem))] max-h-[82vh] bg-[#042630] border border-[#4c7273]/30 text-[#d0d6d6] p-0 overflow-hidden flex flex-col"
+          className="w-[min(1100px,calc(100vw-2rem))] max-h-[90vh] bg-[#042630] border border-[#4c7273]/30 text-[#d0d6d6] p-0 overflow-hidden flex flex-col"
         >
           {/* ── pinned header ── */}
           <DialogHeader className="shrink-0 px-5 pt-4 pb-3 border-b border-[#4c7273]/20">
@@ -173,12 +176,76 @@ export default function ApprovalCard({ file, onApproved, onRejected }: ApprovalC
 
           {/* ── scrollable body ── */}
           <div className="flex-1 min-h-0 overflow-y-auto px-5 py-3 space-y-3">
-            <Textarea
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              className="font-mono text-xs bg-[#041421] border-[#4c7273]/30 text-[#d0d6d6] h-44 resize-none w-full"
-              aria-label="Proposed content — edit before approving"
-            />
+            {/* Preview / Edit toggle */}
+            <div className="flex items-center gap-1 bg-[#041421] border border-[#4c7273]/30 rounded-lg p-1 w-fit">
+              <button
+                onClick={() => setPreviewMode(true)}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all',
+                  previewMode
+                    ? 'bg-[#042630] text-[#86b9b0] border border-[#4c7273]/40'
+                    : 'text-[#4c7273] hover:text-[#86b9b0]'
+                )}
+              >
+                <Eye className="w-3 h-3" /> Preview
+              </button>
+              <button
+                onClick={() => setPreviewMode(false)}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all',
+                  !previewMode
+                    ? 'bg-[#042630] text-[#86b9b0] border border-[#4c7273]/40'
+                    : 'text-[#4c7273] hover:text-[#86b9b0]'
+                )}
+              >
+                <Pencil className="w-3 h-3" /> Edit
+              </button>
+            </div>
+
+            {previewMode ? (
+              <div className="min-h-80 rounded-lg bg-[#041421] border border-[#4c7273]/30 px-4 py-3 overflow-auto prose-custom">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    table: ({ children }) => (
+                      <div className="overflow-x-auto my-3">
+                        <table className="w-full text-sm border-collapse border border-[#4c7273]/40">{children}</table>
+                      </div>
+                    ),
+                    thead: ({ children }) => (
+                      <thead className="bg-[#042630]">{children}</thead>
+                    ),
+                    th: ({ children }) => (
+                      <th className="border border-[#4c7273]/40 px-4 py-2.5 text-left font-semibold text-[#86b9b0] text-sm whitespace-nowrap">{children}</th>
+                    ),
+                    td: ({ children }) => (
+                      <td className="border border-[#4c7273]/40 px-4 py-2.5 text-[#d0d6d6] text-sm">{children}</td>
+                    ),
+                    tr: ({ children }) => (
+                      <tr className="even:bg-[#042630]/50">{children}</tr>
+                    ),
+                    p: ({ children }) => <p className="text-sm text-[#d0d6d6] mb-3 leading-relaxed">{children}</p>,
+                    h1: ({ children }) => <h1 className="text-xl font-bold text-amber-300 mb-3 border-b border-amber-400/30 pb-1">{children}</h1>,
+                    h2: ({ children }) => <h2 className="text-base font-bold text-cyan-300 mb-2 mt-4">{children}</h2>,
+                    h3: ({ children }) => <h3 className="text-sm font-semibold text-violet-300 mb-1.5 mt-3">{children}</h3>,
+                    code: ({ children }) => <code className="font-mono text-sm bg-[#042630] px-1.5 py-0.5 rounded text-[#86b9b0]">{children}</code>,
+                    ul: ({ children }) => <ul className="list-disc list-inside text-sm text-[#d0d6d6] space-y-1.5 mb-3">{children}</ul>,
+                    ol: ({ children }) => <ol className="list-decimal list-inside text-sm text-[#d0d6d6] space-y-1.5 mb-3">{children}</ol>,
+                    strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
+                    hr: () => <hr className="border-[#4c7273]/30 my-3" />,
+                  }}
+                >
+                  {content}
+                </ReactMarkdown>
+              </div>
+            ) : (
+              <Textarea
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                className="font-mono text-sm bg-[#041421] border-[#4c7273]/30 text-[#d0d6d6] h-80 resize-none w-full"
+                aria-label="Proposed content — edit before approving"
+              />
+            )}
 
             {showRejectReason && (
               <div className="space-y-1.5">

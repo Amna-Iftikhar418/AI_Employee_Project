@@ -12,6 +12,7 @@ import {
   Activity,
   Clock,
   XCircle,
+  Trash2,
 } from 'lucide-react';
 import KpiCard from '@/components/KpiCard';
 import BrowserTaskCard from '@/components/BrowserTaskCard';
@@ -22,7 +23,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { fetchDomain, fetchScreenshots, triggerAction, DomainFile } from '@/lib/api';
+import { fetchDomain, fetchScreenshots, triggerAction, deleteScreenshot, DomainFile } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 // ── filter ────────────────────────────────────────────────────────────────────
@@ -217,6 +218,8 @@ const inputCls =
 
 function ScreenshotGallery() {
   const [preview, setPreview] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   const { data } = useQuery({
     queryKey: ['screenshots'],
@@ -225,6 +228,18 @@ function ScreenshotGallery() {
   });
 
   const screenshots = data?.screenshots ?? [];
+
+  const handleDelete = async (src: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setDeleting(src);
+    try {
+      await deleteScreenshot(src);
+      queryClient.invalidateQueries({ queryKey: ['screenshots'] });
+      if (preview === src) setPreview(null);
+    } finally {
+      setDeleting(null);
+    }
+  };
 
   if (screenshots.length === 0) {
     return (
@@ -241,28 +256,41 @@ function ScreenshotGallery() {
       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
         {screenshots.map((src) => {
           const name = decodeURIComponent(src.split('/').pop() ?? src);
+          const isDeleting = deleting === src;
           return (
-            <button
-              key={src}
-              onClick={() => setPreview(src)}
-              className="group rounded-lg overflow-hidden border border-[#4c7273]/30 hover:border-[#86b9b0]/50 transition-colors aspect-video bg-[#041421]"
-              aria-label={`View screenshot: ${name}`}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={src}
-                alt={name}
-                className="w-full h-full object-cover group-hover:opacity-80 transition-opacity"
-                onError={(e) => {
-                  const img = e.target as HTMLImageElement;
-                  img.style.display = 'none';
-                  const placeholder = document.createElement('div');
-                  placeholder.className = 'w-full h-full flex items-center justify-center text-slate-600 text-xs';
-                  placeholder.textContent = 'Image unavailable';
-                  img.parentElement?.appendChild(placeholder);
-                }}
-              />
-            </button>
+            <div key={src} className="relative group aspect-video">
+              <button
+                onClick={() => setPreview(src)}
+                className="w-full h-full rounded-lg overflow-hidden border border-[#4c7273]/30 group-hover:border-[#86b9b0]/50 transition-colors bg-[#041421]"
+                aria-label={`View screenshot: ${name}`}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={src}
+                  alt={name}
+                  className="w-full h-full object-cover group-hover:opacity-70 transition-opacity"
+                  onError={(e) => {
+                    const img = e.target as HTMLImageElement;
+                    img.style.display = 'none';
+                    const placeholder = document.createElement('div');
+                    placeholder.className = 'w-full h-full flex items-center justify-center text-slate-600 text-xs';
+                    placeholder.textContent = 'Image unavailable';
+                    img.parentElement?.appendChild(placeholder);
+                  }}
+                />
+              </button>
+              {/* Delete X button */}
+              <button
+                onClick={(e) => handleDelete(src, e)}
+                disabled={isDeleting}
+                aria-label={`Delete screenshot: ${name}`}
+                className="absolute top-1 right-1 w-5 h-5 rounded-full bg-rose-600/80 hover:bg-rose-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+              >
+                {isDeleting
+                  ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                  : <XCircle className="w-3 h-3" />}
+              </button>
+            </div>
           );
         })}
       </div>
@@ -281,6 +309,18 @@ function ScreenshotGallery() {
               alt="Screenshot full view"
               className="w-full rounded-lg max-h-[70vh] object-contain"
             />
+            <div className="flex justify-end pt-1">
+              <button
+                onClick={() => handleDelete(preview)}
+                disabled={deleting === preview}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-rose-400 hover:bg-rose-500/10 border border-rose-500/30 hover:border-rose-500/50 transition-colors disabled:opacity-50"
+              >
+                {deleting === preview
+                  ? <Loader2 className="w-3 h-3 animate-spin" />
+                  : <Trash2 className="w-3 h-3" />}
+                Delete screenshot
+              </button>
+            </div>
           </DialogContent>
         </Dialog>
       )}

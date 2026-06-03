@@ -119,6 +119,7 @@ export default function GmailPage() {
   const { data: files = [], isLoading } = useQuery({
     queryKey: ['domain', 'email'],
     queryFn: () => fetchDomain('email'),
+    refetchInterval: 15_000,
   });
 
   const handleDelete = () => {
