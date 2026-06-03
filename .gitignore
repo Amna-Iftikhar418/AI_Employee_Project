@@ -1,6 +1,6 @@
 # ─── Secrets & credentials ───────────────────────────────────────────────────
-# FIX: Never track secrets, OAuth tokens, or credentials in version control
 .env
+.env.local
 token.json
 credentials.json
 
@@ -13,7 +13,8 @@ credentials.json
 # ─── Gmail processed state ────────────────────────────────────────────────────
 processed_emails.json
 
-# ─── Lock files (runtime, not source) ────────────────────────────────────────
+# ─── Runtime files ────────────────────────────────────────────────────────────
+*.pid
 *.lock
 
 # ─── Log files ────────────────────────────────────────────────────────────────
@@ -25,7 +26,6 @@ __pycache__/
 *.pyo
 *.pyd
 .venv/
-.env.local
 
 # ─── Node.js ──────────────────────────────────────────────────────────────────
 node_modules/
@@ -33,6 +33,23 @@ package-lock.json
 
 # ─── Playwright ───────────────────────────────────────────────────────────────
 .playwright-mcp/
+linkedin_debug/
+
+# ─── Claude / Agent config (local dev only) ───────────────────────────────────
+.claude/
+.agent/
+CLAUDE.md
+
+# ─── Vault — personal data, emails, WhatsApp, logs (never commit) ─────────────
+vault/AI_Employee_Vault/Inbox/
+vault/AI_Employee_Vault/Logs/
+vault/AI_Employee_Vault/Done/
+vault/AI_Employee_Vault/Rejected/
+vault/AI_Employee_Vault/Approved/
+vault/AI_Employee_Vault/Pending_Approval/
+vault/AI_Employee_Vault/Briefings/
+vault/AI_Employee_Vault/Plans/
+vault/**/.processed_*.json
 
 # ─── OS noise ─────────────────────────────────────────────────────────────────
 .DS_Store
