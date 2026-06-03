@@ -98,10 +98,7 @@ export default function Sidebar() {
 
         /* Logo area */
         .logo-glow {
-          box-shadow:
-            0 0 0 1px rgba(134,185,176,0.15),
-            0 0 16px rgba(134,185,176,0.25),
-            0 0 32px rgba(134,185,176,0.10);
+          box-shadow: 0 0 0 1px rgba(134,185,176,0.15);
         }
 
         .logo-section {
@@ -160,7 +157,7 @@ export default function Sidebar() {
           opacity: 0 !important;
         }
 
-        /* Active left glow bar */
+        /* Active left bar */
         .nav-link-active::after {
           content: '';
           position: absolute;
@@ -170,12 +167,11 @@ export default function Sidebar() {
           width: 2.5px;
           border-radius: 0 2px 2px 0;
           background: linear-gradient(180deg, #86b9b0 0%, #4c7273 100%);
-          box-shadow: 0 0 8px rgba(134,185,176,0.6), 0 0 16px rgba(134,185,176,0.3);
         }
 
-        /* Icon glow on active */
+        /* Icon active state */
         .nav-icon-active {
-          filter: drop-shadow(0 0 5px currentColor);
+          filter: none;
         }
 
         /* Badge */
@@ -198,7 +194,7 @@ export default function Sidebar() {
 
         .nav-link:hover .nav-badge,
         .nav-link-active .nav-badge {
-          box-shadow: 0 0 8px currentColor;
+          box-shadow: none;
         }
 
         /* Section divider */
@@ -219,7 +215,7 @@ export default function Sidebar() {
 
         .nav-link-active .nav-dot,
         .nav-link:hover .nav-dot {
-          box-shadow: 0 0 6px currentColor;
+          box-shadow: none;
         }
 
         /* Footer */
@@ -278,7 +274,7 @@ export default function Sidebar() {
               AI Employee
             </span>
             <div className="flex items-center gap-1.5">
-              <span className="status-pulse w-1.5 h-1.5 rounded-full bg-[#10b981] inline-block" style={{ boxShadow: '0 0 6px #10b981' }} />
+              <span className="status-pulse w-1.5 h-1.5 rounded-full bg-[#10b981] inline-block" />
               <span
                 className="text-[10px] font-medium tracking-widest uppercase"
                 style={{ color: 'rgba(76,114,115,0.7)', fontFamily: "'Space Mono', monospace" }}
@@ -348,7 +344,7 @@ export default function Sidebar() {
           <div className="flex items-center gap-1">
             <span
               className="w-1 h-1 rounded-full"
-              style={{ background: 'linear-gradient(135deg, #86b9b0, #4c7273)', boxShadow: '0 0 4px rgba(134,185,176,0.5)' }}
+              style={{ background: 'linear-gradient(135deg, #86b9b0, #4c7273)' }}
             />
             <span
               className="w-1 h-1 rounded-full opacity-50"

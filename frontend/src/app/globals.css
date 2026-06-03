@@ -183,6 +183,19 @@ body {
 }
 .content-fade-in { animation: content-fade-in 220ms ease-out both; }
 
+/* ── Hero background gradient animation ──────────────────────── */
+@keyframes hero-gradient {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.hero-gradient-anim {
+  background: linear-gradient(135deg, #041421, #042e3c, #041c2e, #053040, #041421);
+  background-size: 300% 300%;
+  animation: hero-gradient 10s ease infinite;
+}
+
 /* ── Wave float animation for activity toggle button ─────────── */
 @keyframes wave-float {
   0%, 100% { transform: translateY(0px);    }

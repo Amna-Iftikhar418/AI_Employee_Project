@@ -104,7 +104,7 @@ export default function DashboardPage() {
     <div className="p-6 max-w-7xl mx-auto min-h-screen bg-[#041421]">
 
       {/* Hero header */}
-      <header className="relative flex items-center gap-6 mb-8 pb-6 border-b border-[#4c7273]/20 bg-[#041421] rounded-2xl px-6 pt-6">
+      <header className="relative flex items-center gap-6 mb-8 pb-6 border-b border-[#4c7273]/20 hero-gradient-anim rounded-2xl px-6 pt-6">
         <div className="flex-1">
           <p className="text-[11px] font-bold tracking-[0.18em] uppercase text-[#4c7273] mb-2">
             Autonomous AI System
@@ -124,7 +124,7 @@ export default function DashboardPage() {
       </header>
 
       {/* Bento grid */}
-      <div className="grid grid-cols-12 gap-4">
+      <div className="grid grid-cols-12 gap-4 mt-6">
 
         {/* Domain status — left */}
         <div className="col-span-12 lg:col-span-7">
