@@ -297,7 +297,7 @@ xcopy /E /I /H /Y "C:\Users\<you>\OneDrive\AI_Employee_Project" "C:\AI_Employee_
 
 ## Built By
 
-**Amna Iftikhar** — built entirely with [Claude Code](https://claude.ai/code)
+**Amna Iftikhar** — built with [Claude Code](https://claude.ai/code)
 
 > *"I built an AI employee that reads my emails, replies to WhatsApp, and posts on LinkedIn — without me lifting a finger."*
 
