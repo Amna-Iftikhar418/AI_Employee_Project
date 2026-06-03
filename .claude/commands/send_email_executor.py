@@ -100,6 +100,34 @@ def load_task(task_file: Path) -> dict:
     }
 
 
+def load_plan_from_task_body(task_file: Path) -> dict:
+    """Fallback: extract reply fields directly from the task file body."""
+    text = task_file.read_text(encoding="utf-8")
+    _, body = parse_frontmatter(text)
+
+    from_match = re.search(r"\*\*From:\*\*\s*(.+)", body)
+    sender_raw = from_match.group(1).strip() if from_match else ""
+    email_match = re.search(r"[\w.+-]+@[\w.-]+\.\w+", sender_raw)
+    recipient = email_match.group(0) if email_match else sender_raw
+
+    subj_match = re.search(r"\*\*Subject:\*\*\s*(.+)", body)
+    subject = subj_match.group(1).strip() if subj_match else "Your Request"
+
+    proposed_body = extract_section(body, "Proposed Response")
+    if not proposed_body:
+        proposed_body = extract_section(body, "Proposed Reply") or extract_section(body, "Response")
+    if proposed_body:
+        proposed_body = re.sub(r"^Subject:[^\n]*\n+", "", proposed_body, flags=re.IGNORECASE).strip()
+
+    if not proposed_body:
+        raise ValueError(
+            "No 'Proposed Response' section found in the task file. "
+            "Cannot send email without a reply body."
+        )
+
+    return {"plan_file": task_file.name, "to": recipient, "subject": subject, "body": proposed_body}
+
+
 def load_plan(task_name: str) -> dict:
     """Read the PLAN file and extract proposed response, to, and subject."""
     plan_file = PLANS_DIR / f"PLAN_{task_name}.md"
@@ -343,7 +371,11 @@ def run(task_path_str: str) -> int:
         logger.info(f"Sender:     {task['original_sender']}")
 
         # ── Step 2: Load plan + extract email fields ──────────────────────────
-        plan = load_plan(task_name)
+        try:
+            plan = load_plan(task_name)
+        except FileNotFoundError:
+            logger.warning(f"Plan file missing for {task_name} — falling back to task file body")
+            plan = load_plan_from_task_body(task_file)
 
         if not plan["to"]:
             # Fallback: use sender extracted from task body

@@ -37,18 +37,22 @@ function stageBadgeStyle(stage: string): React.CSSProperties {
   return { backgroundColor: `${color}22`, color, borderColor: `${color}44` };
 }
 
-// ── per-row delete control ────────────────────────────────────────────────────
+function stageAccentColor(stage: string): string {
+  const key = stage.toLowerCase().replace(/_/g, '');
+  return STATUS_COLORS[stage.toLowerCase()] ?? STATUS_COLORS[key] ?? '#6366f1';
+}
 
-interface DeleteCellProps {
+// ── delete button (div-based, no td) ─────────────────────────────────────────
+
+interface DeleteButtonProps {
   file: DomainFile;
   onDeleted: (filepath: string) => void;
 }
 
-function DeleteCell({ file, onDeleted }: DeleteCellProps) {
-  const [confirming, setConfirming] = useState(false);
+function DeleteButton({ file, onDeleted }: DeleteButtonProps) {
   const [deleting, setDeleting] = useState(false);
 
-  if (!isDeletable(file.stage)) return <td className="px-4 py-3 w-10" />;
+  if (!isDeletable(file.stage)) return null;
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -58,66 +62,33 @@ function DeleteCell({ file, onDeleted }: DeleteCellProps) {
       onDeleted(file.filepath);
     } finally {
       setDeleting(false);
-      setConfirming(false);
     }
   };
 
-  if (deleting) {
-    return (
-      <td className="px-4 py-3 w-20">
-        <Loader2 className="w-4 h-4 animate-spin text-slate-500 mx-auto" />
-      </td>
-    );
-  }
-
-  if (confirming) {
-    return (
-      <td className="px-4 py-3 w-20" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={handleDelete}
-            className="w-6 h-6 flex items-center justify-center rounded bg-rose-500/20 hover:bg-rose-500/40 text-rose-400 transition-colors"
-            aria-label="Confirm delete"
-          >
-            <Check className="w-3 h-3" />
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); setConfirming(false); }}
-            className="w-6 h-6 flex items-center justify-center rounded bg-[#041421] hover:bg-[#042630] text-[#4c7273] transition-colors"
-            aria-label="Cancel delete"
-          >
-            <X className="w-3 h-3" />
-          </button>
-        </div>
-      </td>
-    );
-  }
+  if (deleting) return <Loader2 className="w-4 h-4 animate-spin text-slate-500" />;
 
   return (
-    <td className="px-4 py-3 w-10" onClick={(e) => e.stopPropagation()}>
-      <button
-        onClick={(e) => { e.stopPropagation(); setConfirming(true); }}
-        className="w-7 h-7 flex items-center justify-center rounded hover:bg-rose-500/10 text-slate-500 hover:text-rose-400 transition-colors"
-        aria-label={`Delete ${file.filename}`}
-      >
-        <Trash2 className="w-3.5 h-3.5" />
-      </button>
-    </td>
+    <button
+      onClick={handleDelete}
+      className="w-7 h-7 flex items-center justify-center rounded hover:bg-rose-500/10 text-slate-600 hover:text-rose-400 transition-colors"
+      aria-label={`Delete ${file.filename}`}
+    >
+      <Trash2 className="w-3.5 h-3.5" />
+    </button>
   );
 }
 
-// ── per-row approve / reject control ──────────────────────────────────────────
+// ── approve / reject buttons (div-based, no td) ───────────────────────────────
 
-interface ApproveCellProps {
+interface ApproveButtonsProps {
   file: DomainFile;
   onActioned: (filepath: string) => void;
 }
 
-function ApproveCell({ file, onActioned }: ApproveCellProps) {
+function ApproveButtons({ file, onActioned }: ApproveButtonsProps) {
   const [busy, setBusy] = useState<'approve' | 'reject' | null>(null);
 
-  // Only Pending_Approval rows can be approved/rejected; others get a blank cell.
-  if (file.stage !== 'Pending_Approval') return <td className="px-4 py-3 w-40" />;
+  if (file.stage !== 'Pending_Approval') return null;
 
   const run = async (action: 'approve' | 'reject', e: React.MouseEvent) => {
     e.stopPropagation();
@@ -132,32 +103,30 @@ function ApproveCell({ file, onActioned }: ApproveCellProps) {
   };
 
   return (
-    <td className="px-4 py-3 w-40" onClick={(e) => e.stopPropagation()}>
-      <div className="flex items-center gap-1.5">
-        <button
-          onClick={(e) => run('approve', e)}
-          disabled={busy !== null}
-          className="flex items-center gap-1 px-2.5 h-7 rounded-md text-xs font-medium bg-emerald-600/80 hover:bg-emerald-600 text-white disabled:opacity-50 transition-colors"
-          aria-label={`Approve ${file.filename}`}
-        >
-          {busy === 'approve' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-          Approve
-        </button>
-        <button
-          onClick={(e) => run('reject', e)}
-          disabled={busy !== null}
-          className="flex items-center gap-1 px-2.5 h-7 rounded-md text-xs font-medium bg-rose-700/80 hover:bg-rose-700 text-white disabled:opacity-50 transition-colors"
-          aria-label={`Reject ${file.filename}`}
-        >
-          {busy === 'reject' ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}
-          Reject
-        </button>
-      </div>
-    </td>
+    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+      <button
+        onClick={(e) => run('approve', e)}
+        disabled={busy !== null}
+        className="flex items-center gap-1 px-2.5 h-7 rounded-md text-xs font-medium bg-emerald-600/80 hover:bg-emerald-600 text-white disabled:opacity-50 transition-colors"
+        aria-label={`Approve ${file.filename}`}
+      >
+        {busy === 'approve' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+        Approve
+      </button>
+      <button
+        onClick={(e) => run('reject', e)}
+        disabled={busy !== null}
+        className="flex items-center gap-1 px-2.5 h-7 rounded-md text-xs font-medium bg-rose-700/80 hover:bg-rose-700 text-white disabled:opacity-50 transition-colors"
+        aria-label={`Reject ${file.filename}`}
+      >
+        {busy === 'reject' ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}
+        Reject
+      </button>
+    </div>
   );
 }
 
-// ── main table ────────────────────────────────────────────────────────────────
+// ── main component ────────────────────────────────────────────────────────────
 
 interface DomainTaskTableProps {
   files: DomainFile[];
@@ -166,9 +135,7 @@ interface DomainTaskTableProps {
   onDelete?: (filepath: string) => void;
   activeTab?: string;
   onTabChange?: (key: string) => void;
-  /** When true, Pending_Approval rows get inline Approve / Reject buttons. */
   approvable?: boolean;
-  /** Optional subtitle shown below the filename (e.g. customer name for Odoo rows). */
   subtitle?: (file: DomainFile) => string | null | undefined;
 }
 
@@ -182,9 +149,16 @@ function matchesSearch(file: DomainFile, query: string): boolean {
   );
 }
 
-export default function DomainTaskTable({ files, tabs, renderExpanded, onDelete, activeTab, onTabChange, approvable = false, subtitle }: DomainTaskTableProps) {
-  // Total column count, used for empty-state and expanded-row colSpan.
-  const colCount = approvable ? 7 : 6;
+export default function DomainTaskTable({
+  files,
+  tabs,
+  renderExpanded,
+  onDelete,
+  activeTab,
+  onTabChange,
+  approvable = false,
+  subtitle,
+}: DomainTaskTableProps) {
   const activeTabs = tabs ?? DEFAULT_TABS;
   const [internalKey, setInternalKey] = useState(activeTabs[0]?.key ?? 'all');
   const activeKey = activeTab ?? internalKey;
@@ -192,7 +166,7 @@ export default function DomainTaskTable({ files, tabs, renderExpanded, onDelete,
     setInternalKey(key);
     onTabChange?.(key);
   };
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState<string | null>(null);
   const [removed, setRemoved] = useState<Set<string>>(new Set());
   const [clearingAll, setClearingAll] = useState(false);
   const [search, setSearch] = useState('');
@@ -204,15 +178,9 @@ export default function DomainTaskTable({ files, tabs, renderExpanded, onDelete,
     .filter((f) => matchesSearch(f, search))]
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  // Show "Clear All" button only when every visible row is deletable
   const allDeletable = visible.length > 0 && visible.every((f) => isDeletable(f.stage));
 
-  const toggle = (fp: string) =>
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      next.has(fp) ? next.delete(fp) : next.add(fp);
-      return next;
-    });
+  const toggle = (fp: string) => setExpanded((prev) => (prev === fp ? null : fp));
 
   const handleDeleted = (filepath: string) => {
     setRemoved((prev) => new Set([...prev, filepath]));
@@ -231,8 +199,9 @@ export default function DomainTaskTable({ files, tabs, renderExpanded, onDelete,
   };
 
   return (
-    <div className="rounded-xl border border-[#4c7273]/30 overflow-hidden bg-[#042630]">
-      {/* Search bar */}
+    <div className="rounded-xl border border-[#4c7273]/30 overflow-hidden bg-transparent">
+
+      {/* ── search bar ── */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-[#4c7273]/20 bg-[#041421]">
         <Search className="w-3.5 h-3.5 text-slate-600 shrink-0" />
         <input
@@ -254,7 +223,7 @@ export default function DomainTaskTable({ files, tabs, renderExpanded, onDelete,
         )}
       </div>
 
-      {/* Filter tabs + clear-all */}
+      {/* ── filter tabs + clear-all ── */}
       <div className="flex items-center justify-between border-b border-[#4c7273]/20 bg-[#042630]">
         <div className="flex flex-wrap">
           {activeTabs.map((t) => {
@@ -278,7 +247,6 @@ export default function DomainTaskTable({ files, tabs, renderExpanded, onDelete,
             );
           })}
         </div>
-
         {allDeletable && (
           <button
             onClick={handleClearAll}
@@ -286,89 +254,115 @@ export default function DomainTaskTable({ files, tabs, renderExpanded, onDelete,
             className="flex items-center gap-1.5 mr-3 px-3 py-1.5 rounded-lg text-xs font-medium text-rose-400 hover:bg-rose-500/10 border border-rose-500/20 hover:border-rose-500/40 transition-all disabled:opacity-50"
             aria-label={`Clear all ${visible.length} files`}
           >
-            {clearingAll ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Trash2 className="w-3.5 h-3.5" />
-            )}
+            {clearingAll ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
             Clear all ({visible.length})
           </button>
         )}
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-[#4c7273]/20 text-left">
-              <th className="px-4 py-3 text-xs font-semibold text-[#4c7273] uppercase tracking-wide">File</th>
-              <th className="px-4 py-3 text-xs font-semibold text-[#4c7273] uppercase tracking-wide">Stage</th>
-              <th className="px-4 py-3 text-xs font-semibold text-[#4c7273] uppercase tracking-wide hidden sm:table-cell">Created</th>
-              <th className="px-4 py-3 text-xs font-semibold text-[#4c7273] uppercase tracking-wide hidden md:table-cell">Modified</th>
-              {approvable && <th className="px-4 py-3 w-40" />}
-              <th className="px-4 py-3 w-10" />
-              <th className="px-4 py-3 w-10" />
-            </tr>
-          </thead>
-          <tbody>
-            {visible.length === 0 && (
-              <tr>
-                <td colSpan={colCount} className="px-4 py-8 text-center text-[#4c7273] text-sm">
-                  {search ? `No files match "${search}".` : 'No files found.'}
-                </td>
-              </tr>
-            )}
-            {visible.map((file) => {
-              const isOpen = expanded.has(file.filepath);
-              return (
-                <React.Fragment key={file.filepath}>
-                  <tr
-                    className="group border-b border-[#4c7273]/20 hover:bg-[#041421] cursor-pointer transition-colors"
-                    onClick={() => toggle(file.filepath)}
+      {/* ── card list ── */}
+      <div className="p-3 space-y-2">
+        {visible.length === 0 && (
+          <div className="py-10 text-center text-[#4c7273] text-sm">
+            {search ? `No files match "${search}".` : 'No files found.'}
+          </div>
+        )}
+
+        {visible.map((file) => {
+          const isOpen = expanded === file.filepath;
+          const accent = stageAccentColor(file.stage);
+
+          return (
+            <div
+              key={file.filepath}
+              className={cn(
+                'rounded-xl overflow-hidden border transition-all duration-150',
+                isOpen
+                  ? 'border-[#86b9b0]/35 shadow-[0_0_0_1px_rgba(134,185,176,0.08)]'
+                  : 'border-[#4c7273]/25 hover:border-[#4c7273]/50'
+              )}
+            >
+              {/* ── card header ── */}
+              <div className={cn(
+                'flex items-center gap-0 transition-colors',
+                isOpen ? 'bg-[#031c28]' : 'bg-[#042630] hover:bg-[#041e2a]'
+              )}>
+
+                {/* colored left accent strip */}
+                <div
+                  className="w-1 self-stretch shrink-0 rounded-l-xl"
+                  style={{ backgroundColor: `${accent}60` }}
+                />
+
+                {/* toggle zone — click expands the card */}
+                <button
+                  onClick={() => toggle(file.filepath)}
+                  className="flex-1 flex items-center gap-3 px-4 py-3.5 min-w-0 text-left"
+                >
+                  <span className={cn(
+                    'shrink-0 transition-colors',
+                    isOpen ? 'text-[#86b9b0]' : 'text-[#4c7273]'
+                  )}>
+                    {isOpen
+                      ? <ChevronDown className="w-4 h-4" />
+                      : <ChevronRight className="w-4 h-4" />}
+                  </span>
+
+                  {/* filename + subtitle */}
+                  <div className="min-w-0 flex-1">
+                    <span className={cn(
+                      'font-mono text-xs truncate block',
+                      isOpen ? 'text-white' : 'text-[#d0d6d6]'
+                    )}>
+                      {file.filename}
+                    </span>
+                    {subtitle && (() => {
+                      const s = subtitle(file);
+                      return s
+                        ? <span className="text-[11px] text-[#6b8e8e] truncate block mt-0.5">{s}</span>
+                        : null;
+                    })()}
+                  </div>
+
+                  {/* stage badge */}
+                  <Badge
+                    className="text-[10px] shrink-0 hidden sm:inline-flex"
+                    style={stageBadgeStyle(file.stage)}
                   >
-                    <td className="px-4 py-3 max-w-[220px]">
-                      <span className="font-mono text-xs text-[#d0d6d6] truncate block">{file.filename}</span>
-                      {subtitle && (() => { const s = subtitle(file); return s ? <span className="text-[11px] text-[#4c7273] truncate block">{s}</span> : null; })()}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge className="text-[10px]" style={stageBadgeStyle(file.stage)}>
-                        {file.stage}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-[#4c7273] hidden sm:table-cell">
-                      <time dateTime={file.createdAt}>
-                        {new Date(file.createdAt).toLocaleDateString()}
-                      </time>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-[#4c7273] hidden md:table-cell">
-                      <time dateTime={file.modifiedAt}>
-                        {new Date(file.modifiedAt).toLocaleDateString()}
-                      </time>
-                    </td>
-                    {approvable && <ApproveCell file={file} onActioned={handleDeleted} />}
-                    <DeleteCell file={file} onDeleted={handleDeleted} />
-                    <td className="px-4 py-3 text-slate-500">
-                      {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                    </td>
-                  </tr>
-                  {isOpen && (
-                    <tr key={`${file.filepath}-expanded`} className="bg-[#041421]">
-                      <td colSpan={colCount} className="px-4 py-4">
-                        {renderExpanded ? (
-                          renderExpanded(file)
-                        ) : (
-                          <pre className="font-mono text-xs text-[#4c7273] whitespace-pre-wrap break-words max-h-64 overflow-y-auto">
-                            {file.body || '(empty)'}
-                          </pre>
-                        )}
-                      </td>
-                    </tr>
+                    {file.stage.replace(/_/g, ' ')}
+                  </Badge>
+
+                  {/* dates */}
+                  <span className="text-[11px] text-[#4c7273] shrink-0 hidden md:block tabular-nums">
+                    {new Date(file.createdAt).toLocaleDateString()}
+                  </span>
+                </button>
+
+                {/* action zone — never triggers toggle */}
+                <div
+                  className="flex items-center gap-2 pr-3 pl-2 shrink-0 border-l border-[#4c7273]/15"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {approvable && <ApproveButtons file={file} onActioned={handleDeleted} />}
+                  <DeleteButton file={file} onDeleted={handleDeleted} />
+                </div>
+              </div>
+
+              {/* ── expanded content ── */}
+              {isOpen && (
+                <div className="border-t border-[#4c7273]/20 bg-[#020f18] px-5 py-5">
+                  {renderExpanded ? (
+                    renderExpanded(file)
+                  ) : (
+                    <pre className="font-mono text-xs text-[#4c7273] whitespace-pre-wrap break-words max-h-64 overflow-y-auto">
+                      {file.body || '(empty)'}
+                    </pre>
                   )}
-                </React.Fragment>
-              );
-            })}
-          </tbody>
-        </table>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

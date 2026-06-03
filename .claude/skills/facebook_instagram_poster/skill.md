@@ -49,10 +49,24 @@ User request / Needs_Action/social/
 
 ### ACTION-1: Create Social Post (Content Generation)
 
-**Step 1 — Generate post content:**
-- Write high-quality, engaging copy for the target platform(s)
-- Facebook: 1–3 paragraphs, optional link, can be text-only
-- Instagram: requires image URL + caption (max 2200 chars, hashtags OK)
+**Step 1 — Generate post content (MUST be different per platform):**
+
+Read the task file frontmatter field `topic:` — this is the subject the user wants the post to be about. If no `topic` is set, check the `## Payload` section for a `"topic"` key. Use it as the central theme for all content.
+
+Write two distinct pieces of copy from the given topic — do NOT copy-paste one into the other.
+
+**Facebook `message`:**
+- Conversational professional tone, 150–300 words
+- 2–3 short paragraphs: hook → context/value → call to action
+- No hashtags needed (1–2 max if used)
+- Can include a link or mention a URL in the text
+
+**Instagram `caption`:**
+- Punchy opening line (first 125 chars shown before "more")
+- Shorter and more visual/emotional in tone, 80–150 words
+- End with 5–10 relevant hashtags on a separate line
+- Must reference an image (the `image_url` field)
+- No external links in caption (Instagram doesn't make them clickable)
 
 **Step 2 — Write plan file:**
 ```
@@ -78,8 +92,8 @@ Frontmatter:
 ---
 type: social_post
 platforms: facebook, instagram
-message: <full post text for Facebook>
-caption: <caption for Instagram (can differ from Facebook message)>
+message: <Facebook-specific post — conversational prose, 150-300 words, no hashtags>
+caption: <Instagram-specific caption — punchy, 80-150 words, ends with 5-10 hashtags>
 image_url: <public HTTPS image URL — REQUIRED for Instagram>
 link: <optional URL for Facebook link preview>
 created: <ISO timestamp>

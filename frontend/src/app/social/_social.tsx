@@ -1,11 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Share2, Plus, Calendar, Image as ImageIcon, FileText, Hash, Trash2, Loader2, CheckCircle2, XCircle, AlertTriangle, ShieldCheck, RefreshCw } from 'lucide-react';
+import { Share2, Plus, Calendar, Image as ImageIcon, FileText, Hash, Trash2, Loader2, CheckCircle2, XCircle, X, AlertTriangle, ShieldCheck, RefreshCw, Sparkles, SendHorizonal } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import TriggerButton from '@/components/TriggerButton';
 import { fetchDomain, fetchSocialTokenStatus, deleteVaultFile, approvePending, rejectPending, DomainFile } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
@@ -80,9 +79,224 @@ const PLATFORM_CONFIG = {
 
 type Platform = keyof typeof PLATFORM_CONFIG;
 
+// ── create post button with topic + preview dialog ────────────────────────────
+
+type DialogStep = 'input' | 'generating' | 'preview' | 'submitting' | 'done';
+
+function CreatePostButton({ platform }: { platform: Platform }) {
+  const [open, setOpen] = useState(false);
+  const [step, setStep] = useState<DialogStep>('input');
+  const [topic, setTopic] = useState('');
+  const [previewTab, setPreviewTab] = useState<Platform>(platform);
+  const [fbContent, setFbContent] = useState('');
+  const [igContent, setIgContent] = useState('');
+  const [error, setError] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  const config = PLATFORM_CONFIG[platform];
+
+  const reset = () => { setStep('input'); setTopic(''); setFbContent(''); setIgContent(''); setError(''); };
+
+  const handleOpen = () => { reset(); setOpen(true); setTimeout(() => inputRef.current?.focus(), 60); };
+  const handleClose = () => { setOpen(false); setTimeout(reset, 200); };
+
+  const handleGenerate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!topic.trim()) return;
+    setStep('generating');
+    setError('');
+    try {
+      const res = await fetch('/api/social/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic: topic.trim(), platform }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Generation failed');
+      setFbContent(data.facebook ?? '');
+      setIgContent(data.instagram ?? '');
+      setPreviewTab(platform);
+      setStep('preview');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Generation failed');
+      setStep('input');
+    }
+  };
+
+  const handleSubmit = async () => {
+    setStep('submitting');
+    setError('');
+    try {
+      const res = await fetch('/api/social/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform, topic: topic.trim(), facebook: fbContent, instagram: igContent }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Submit failed');
+      setStep('done');
+      setTimeout(handleClose, 2500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Submit failed');
+      setStep('preview');
+    }
+  };
+
+  const activeContent = previewTab === 'facebook' ? fbContent : igContent;
+  const setActiveContent = (v: string) => previewTab === 'facebook' ? setFbContent(v) : setIgContent(v);
+
+  return (
+    <>
+      <button
+        onClick={handleOpen}
+        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-indigo-600/30 border border-indigo-500/40 text-indigo-200 hover:bg-indigo-600/50 transition-all"
+      >
+        <Plus className="w-4 h-4" />
+        Create {config.label} Post
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={handleClose} />
+
+          <div className="relative z-10 w-full max-w-lg rounded-2xl border border-[#4c7273]/40 bg-[#041c2a] shadow-2xl shadow-black/60 flex flex-col max-h-[90vh]">
+
+            {/* header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#4c7273]/20 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: config.color }} />
+                <span className="text-sm font-semibold text-[#d0d6d6]">Create {config.label} Post</span>
+                {topic && step !== 'input' && (
+                  <span className="text-xs text-[#4c7273] truncate max-w-[160px]">· {topic}</span>
+                )}
+              </div>
+              <button onClick={handleClose} className="text-[#4c7273] hover:text-[#d0d6d6] transition-colors shrink-0">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto">
+
+              {/* ── step: input ── */}
+              {step === 'input' && (
+                <form onSubmit={handleGenerate} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-[#86b9b0]">
+                      What should the post be about?
+                    </label>
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      value={topic}
+                      onChange={(e) => setTopic(e.target.value)}
+                      placeholder={`e.g. "New product launch", "Summer sale 20% off"…`}
+                      className="w-full h-10 rounded-lg bg-[#020f18] border border-[#4c7273]/40 px-3 text-sm text-[#d0d6d6] placeholder:text-[#4c7273] focus:outline-none focus:border-[#86b9b0]/60"
+                    />
+                  </div>
+                  {error && <p className="text-xs text-rose-400">{error}</p>}
+                  <button
+                    type="submit"
+                    disabled={!topic.trim()}
+                    className="w-full flex items-center justify-center gap-2 h-10 rounded-lg text-sm font-medium bg-indigo-600/40 border border-indigo-500/40 text-indigo-200 hover:bg-indigo-600/60 transition-all disabled:opacity-40"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    Generate Preview
+                  </button>
+                </form>
+              )}
+
+              {/* ── step: generating ── */}
+              {step === 'generating' && (
+                <div className="py-14 flex flex-col items-center gap-3">
+                  <Loader2 className="w-8 h-8 animate-spin text-[#86b9b0]" />
+                  <p className="text-sm text-[#4c7273]">Writing Facebook &amp; Instagram posts…</p>
+                </div>
+              )}
+
+              {/* ── step: preview / submitting ── */}
+              {(step === 'preview' || step === 'submitting') && (
+                <div className="space-y-4">
+                  {/* platform toggle */}
+                  <div className="flex rounded-lg bg-[#020f18] border border-[#4c7273]/20 p-1 gap-1">
+                    {(['facebook', 'instagram'] as Platform[]).map((p) => (
+                      <button
+                        key={p}
+                        onClick={() => setPreviewTab(p)}
+                        style={previewTab === p ? { color: PLATFORM_CONFIG[p].color } : undefined}
+                        className={cn(
+                          'flex-1 py-1.5 text-xs font-semibold rounded-md transition-all',
+                          previewTab === p ? 'bg-[#042630]' : 'text-[#4c7273] hover:text-[#d0d6d6]'
+                        )}
+                      >
+                        {PLATFORM_CONFIG[p].label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* editable content */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] uppercase tracking-wide text-[#4c7273] font-semibold">
+                        {previewTab === 'facebook' ? 'Facebook Message' : 'Instagram Caption'}
+                      </span>
+                      <span className="text-[10px] text-[#4c7273] tabular-nums">
+                        {activeContent.length} chars
+                      </span>
+                    </div>
+                    <textarea
+                      value={activeContent}
+                      onChange={(e) => setActiveContent(e.target.value)}
+                      rows={10}
+                      disabled={step === 'submitting'}
+                      className="w-full rounded-lg bg-[#020f18] border border-[#4c7273]/30 px-3 py-2.5 text-sm text-[#d0d6d6] focus:outline-none focus:border-[#86b9b0]/50 resize-none leading-relaxed disabled:opacity-60"
+                    />
+                    <p className="text-[10px] text-[#4c7273]">You can edit before sending for approval.</p>
+                  </div>
+
+                  {error && <p className="text-xs text-rose-400">{error}</p>}
+
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={() => setStep('input')}
+                      disabled={step === 'submitting'}
+                      className="px-4 h-9 rounded-lg text-xs font-medium text-[#4c7273] hover:text-[#d0d6d6] border border-[#4c7273]/30 hover:border-[#4c7273]/60 transition-all disabled:opacity-50"
+                    >
+                      ← Back
+                    </button>
+                    <button
+                      onClick={handleSubmit}
+                      disabled={step === 'submitting' || (!fbContent.trim() && !igContent.trim())}
+                      className="flex-1 flex items-center justify-center gap-2 h-9 rounded-lg text-sm font-medium bg-emerald-600/25 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-600/40 transition-all disabled:opacity-50"
+                    >
+                      {step === 'submitting'
+                        ? <Loader2 className="w-4 h-4 animate-spin" />
+                        : <SendHorizonal className="w-4 h-4" />}
+                      {step === 'submitting' ? 'Sending…' : 'Send for Approval'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── step: done ── */}
+              {step === 'done' && (
+                <div className="py-12 flex flex-col items-center gap-3 text-center">
+                  <CheckCircle2 className="w-9 h-9 text-emerald-400" />
+                  <p className="text-sm font-semibold text-emerald-300">Sent for approval!</p>
+                  <p className="text-xs text-[#4c7273]">
+                    Check <span className="text-[#86b9b0]">Pending Approval</span> tab to review and approve.
+                  </p>
+                </div>
+              )}
+
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ── post card ─────────────────────────────────────────────────────────────────
 
-const DELETABLE_STAGES = new Set(['done', 'rejected']);
 const PENDING_STAGES = new Set(['pending_approval', 'needs_action']);
 
 interface PostCardProps {
@@ -93,7 +307,6 @@ interface PostCardProps {
 }
 
 function PostCard({ file, platform, onDeleted, onActioned }: PostCardProps) {
-  const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [approving, setApproving] = useState(false);
   const [rejecting, setRejecting] = useState(false);
@@ -105,7 +318,6 @@ function PostCard({ file, platform, onDeleted, onActioned }: PostCardProps) {
   const created = str(fm.created);
   const stageKey = resolveStageKey(file);
   const config = PLATFORM_CONFIG[platform];
-  const canDelete = DELETABLE_STAGES.has(stageKey) || stageKey === 'done_pending';
   const isPending = PENDING_STAGES.has(stageKey);
   // Instagram cannot publish without an image — the Meta Graph API rejects text-only posts.
   const requiresImage = platform === 'instagram';
@@ -119,7 +331,6 @@ function PostCard({ file, platform, onDeleted, onActioned }: PostCardProps) {
       onDeleted(file.filepath);
     } finally {
       setDeleting(false);
-      setConfirming(false);
     }
   };
 
@@ -171,6 +382,13 @@ function PostCard({ file, platform, onDeleted, onActioned }: PostCardProps) {
             </time>
           )}
         </div>
+
+        {/* Topic / From */}
+        {str(fm.topic) && (
+          <p className="text-[11px] text-[#86b9b0] truncate">
+            <span className="text-[#4c7273]">from · </span>{str(fm.topic)}
+          </p>
+        )}
 
         {/* Image */}
         {imageUrl && (
@@ -262,49 +480,51 @@ function PostCard({ file, platform, onDeleted, onActioned }: PostCardProps) {
         </div>
       )}
 
-      {/* Delete button — hover reveal, done/rejected only */}
-      {canDelete && (
-        <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          {deleting ? (
-            <Loader2 className="w-4 h-4 animate-spin text-slate-500" />
-          ) : confirming ? (
-            <>
-              <button
-                onClick={handleDelete}
-                className="w-6 h-6 flex items-center justify-center rounded bg-rose-500/20 hover:bg-rose-500/40 text-rose-400 transition-colors text-[10px] font-bold"
-                aria-label="Confirm delete"
-              >✓</button>
-              <button
-                onClick={(e) => { e.stopPropagation(); setConfirming(false); }}
-                className="w-6 h-6 flex items-center justify-center rounded bg-[#041421] hover:bg-[#042630] text-[#4c7273] transition-colors text-[10px]"
-                aria-label="Cancel delete"
-              >✗</button>
-            </>
-          ) : (
-            <button
-              onClick={(e) => { e.stopPropagation(); setConfirming(true); }}
-              className="w-6 h-6 flex items-center justify-center rounded bg-[#041421] hover:bg-rose-500/10 text-[#4c7273] hover:text-rose-400 transition-colors"
-              aria-label="Delete post"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-      )}
+      {/* Delete button — hover reveal, all stages */}
+      <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        {deleting ? (
+          <Loader2 className="w-4 h-4 animate-spin text-slate-500" />
+        ) : (
+          <button
+            onClick={handleDelete}
+            className="w-6 h-6 flex items-center justify-center rounded bg-[#041421] hover:bg-rose-500/10 text-[#4c7273] hover:text-rose-400 transition-colors"
+            aria-label="Delete post"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
     </div>
   );
 }
 
 // ── published history table ───────────────────────────────────────────────────
 
-function PublishedTable({ files, platform }: { files: DomainFile[]; platform: Platform }) {
+interface PublishedTableProps {
+  files: DomainFile[];
+  platform: Platform;
+  onDeleted: (fp: string) => void;
+}
+
+function PublishedTable({ files, platform, onDeleted }: PublishedTableProps) {
+  const [clearing, setClearing] = useState(false);
+
   const published = files.filter(
     (f) =>
       f.stage.toLowerCase() === 'done' &&
       matchPlatform(f, platform) &&
-      // Only count files that were actually published (executor writes published_at or status:completed)
       (str(f.frontmatter.published_at) !== '' || str(f.frontmatter.status) === 'completed')
   );
+
+  const handleClearHistory = async () => {
+    setClearing(true);
+    try {
+      await Promise.all(published.map((f) => deleteVaultFile(f.filepath)));
+      published.forEach((f) => onDeleted(f.filepath));
+    } finally {
+      setClearing(false);
+    }
+  };
 
   if (published.length === 0) {
     return (
@@ -316,9 +536,23 @@ function PublishedTable({ files, platform }: { files: DomainFile[]; platform: Pl
 
   return (
     <div className="rounded-xl border border-[#4c7273]/30 overflow-hidden bg-[#042630]">
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#4c7273]/20 bg-[#041421]">
+        <span className="text-xs font-semibold text-[#4c7273] uppercase tracking-wide">
+          {published.length} published post{published.length !== 1 ? 's' : ''}
+        </span>
+        <button
+          onClick={handleClearHistory}
+          disabled={clearing}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-rose-400 hover:bg-rose-500/10 border border-rose-500/20 hover:border-rose-500/40 transition-all disabled:opacity-50"
+          aria-label="Clear all published history"
+        >
+          {clearing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+          Clear history ({published.length})
+        </button>
+      </div>
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-[#4c7273]/20 bg-[#041421]">
+          <tr className="border-b border-[#4c7273]/20">
             <th className="px-4 py-3 text-left text-xs font-semibold text-[#4c7273] uppercase tracking-wide">Preview</th>
             <th className="px-4 py-3 text-left text-xs font-semibold text-[#4c7273] uppercase tracking-wide hidden sm:table-cell">Date</th>
             <th className="px-4 py-3 text-right text-xs font-semibold text-[#4c7273] uppercase tracking-wide">Words</th>
@@ -395,7 +629,7 @@ function PlatformContent({ files, platform, onDeleted, onActioned }: PlatformCon
         <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">
           {PLATFORM_CONFIG[platform].label} — Published History
         </h2>
-        <PublishedTable files={files} platform={platform} />
+        <PublishedTable files={files} platform={platform} onDeleted={onDeleted} />
       </div>
     </div>
   );
@@ -573,12 +807,7 @@ export default function SocialPage() {
             AI-generated social posts pipeline
           </p>
         </div>
-        <TriggerButton
-          action="social"
-          label={`Create ${PLATFORM_CONFIG[tab].label} Post`}
-          payload={{ platform: tab }}
-          icon={<Plus className="w-4 h-4" />}
-        />
+        <CreatePostButton platform={tab} />
       </div>
 
       {/* Meta token health — surfaces expired/invalid tokens that strand Approved posts */}

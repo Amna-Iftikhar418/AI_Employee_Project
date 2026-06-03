@@ -410,16 +410,17 @@ def watch():
                     continue
                 except Exception as e:
                     print(f"[ERROR] Unhandled exception for {name}: {e}")
-                    continue
-
-                # If the file is now gone (moved to Done/) → mark as fully done
-                if not file_path.exists():
-                    persisted.add(name)
-                    _save_processed(persisted)
-                    print(f"[AUTO] Marked as processed: {name}")
-                else:
-                    # File still in Approved/ → processing failed, leave for retry
-                    print(f"[AUTO] File remains in Approved/ - will retry on restart: {name}")
+                finally:
+                    # Always check if the executor moved the file to Done — even when an
+                    # exception was raised after publishing. Without this, a post that WAS
+                    # published but threw during log/move cleanup would re-publish on every
+                    # watcher restart because it is never added to the persisted set.
+                    if not file_path.exists():
+                        persisted.add(name)
+                        _save_processed(persisted)
+                        print(f"[AUTO] Marked as processed: {name}")
+                    else:
+                        print(f"[AUTO] File remains in Approved/ - will retry on restart: {name}")
 
         except Exception as e:
             print(f"[ERROR] Watcher loop error: {e}")

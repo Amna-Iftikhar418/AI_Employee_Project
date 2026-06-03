@@ -53,6 +53,36 @@ export default function ApprovalCard({ file, onApproved, onRejected }: ApprovalC
   const waitingText = formatDistanceToNow(new Date(file.createdAt), { addSuffix: true });
   const busy = approving || rejecting;
 
+  // Extract "from" — check frontmatter first, then parse body for **From:** line
+  const fromField = (() => {
+    const fmFrom = file.frontmatter.from as string | undefined;
+    if (fmFrom) return fmFrom;
+    const match = file.body.match(/\*\*From:\*\*\s*([^\n]+)/i);
+    if (match) return match[1].replace(/<[^>]+>/g, '').trim(); // strip email address
+    return null;
+  })();
+
+  // Extract subject or first meaningful content line for card summary
+  const subjectLine = (() => {
+    // Email: pull **Subject:** line
+    const subj = file.body.match(/\*\*Subject:\*\*\s*([^\n]+)/i);
+    if (subj) return subj[1].trim();
+    // LinkedIn / Social: use topic from frontmatter as the title
+    const topic = file.frontmatter.topic as string | undefined;
+    if (topic) return topic;
+    // Odoo: show customer name + action
+    const partnerName = file.frontmatter.partner_name as string | undefined;
+    const action = file.frontmatter.action as string | undefined;
+    if (partnerName) return action ? `${action.replace(/_/g, ' ')} → ${partnerName}` : partnerName;
+    // Any domain: pull first non-empty line from ## Body section
+    const bodySection = file.body.match(/##\s+Body\s*\n+([\s\S]*?)(?=\n##|$)/i);
+    if (bodySection) {
+      const firstLine = bodySection[1].split('\n').map(l => l.trim()).find(l => l.length > 0);
+      if (firstLine) return firstLine.replace(/^https?:\/\/\S+$/, '').trim() || null;
+    }
+    return null;
+  })();
+
   const previewLines = file.body.split('\n').slice(0, 3).join('\n');
   const preview = previewLines.length > 160 ? previewLines.slice(0, 160) : previewLines;
   const hasMore = file.body.length > preview.length || file.body.split('\n').length > 3;
@@ -121,22 +151,34 @@ export default function ApprovalCard({ file, onApproved, onRejected }: ApprovalC
                 {(file.frontmatter.type as string) ?? file.filename}
               </span>
             </div>
-            <p className="text-xs text-amber-400 mt-0.5">
-              Waiting{' '}
-              <time dateTime={file.createdAt} title={new Date(file.createdAt).toLocaleString()}>
-                {waitingText}
-              </time>
-            </p>
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              {fromField && (
+                <span className="text-xs text-[#86b9b0] truncate max-w-[180px]">
+                  <span className="text-[#4c7273]">from · </span>{fromField}
+                </span>
+              )}
+              <p className="text-xs text-amber-400">
+                Waiting{' '}
+                <time dateTime={file.createdAt} title={new Date(file.createdAt).toLocaleString()}>
+                  {waitingText}
+                </time>
+              </p>
+            </div>
           </div>
           <ChevronRight className="w-4 h-4 text-[#4c7273] group-hover:text-[#86b9b0] transition-colors shrink-0" />
         </div>
 
         {/* preview */}
-        <div className="px-4 py-3">
+        <div className="px-4 py-3 space-y-1.5">
+          {subjectLine && (
+            <p className="text-xs font-medium text-[#d0d6d6] truncate">
+              {subjectLine}
+            </p>
+          )}
           <p className="text-xs font-mono text-[#86b9b0]/65 leading-relaxed line-clamp-3 whitespace-pre-wrap break-words">
             {preview}{hasMore ? '…' : ''}
           </p>
-          <p className="text-[10px] text-[#4c7273]/70 group-hover:text-[#86b9b0]/70 transition-colors mt-2">
+          <p className="text-[10px] text-[#4c7273]/70 group-hover:text-[#86b9b0]/70 transition-colors">
             Click to review &amp; approve
           </p>
         </div>

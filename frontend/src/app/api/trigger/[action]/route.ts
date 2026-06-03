@@ -50,6 +50,10 @@ export async function POST(
   const platform = typeof payload.platform === 'string' ? payload.platform : '';
   const platformLine = platform ? `\nplatform: "${platform}"` : '';
 
+  // Surface `topic` so the skill knows what to write the post about.
+  const topic = typeof payload.topic === 'string' ? payload.topic : '';
+  const topicLine = topic ? `\ntopic: "${topic.replace(/"/g, '\\"')}"` : '';
+
   // For odoo invoice tasks, surface key fields into frontmatter using the exact
   // key names that odoo_executor.py reads (partner_name, partner_email, amount).
   let odooFrontmatter = '';
@@ -90,7 +94,7 @@ type: ${mapping.type}
 source: dashboard
 action: ${actionField}
 triggered_by: dashboard
-timestamp: ${now.toISOString()}${platformLine}${odooFrontmatter}${browserFrontmatter}
+timestamp: ${now.toISOString()}${platformLine}${topicLine}${odooFrontmatter}${browserFrontmatter}
 status: pending
 ---
 

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Share2, Plus, Hash, FileText, Calendar, ExternalLink, Trash2, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Share2, Plus, Hash, FileText, Calendar, ExternalLink, Trash2, Loader2, AlertCircle, CheckCircle2, Copy, Check, AlignLeft, Target } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
@@ -22,6 +22,31 @@ function str(v: unknown): string {
 function extractPostContent(body: string): string {
   const re = /##\s+Post Content[\s\S]*?\n([\s\S]*?)(?=\n##\s|$)/i;
   return (re.exec(body)?.[1] ?? '').trim();
+}
+
+function extractPurpose(body: string): string {
+  const re = /##\s+Purpose[\s\S]*?\n([\s\S]*?)(?=\n##\s|$)/i;
+  return (re.exec(body)?.[1] ?? '').trim();
+}
+
+/** Render a LinkedIn post: paragraphs with highlighted hashtags */
+function PostContentRenderer({ text }: { text: string }) {
+  const paragraphs = text.split(/\n\n+/);
+  return (
+    <div className="space-y-3">
+      {paragraphs.map((para, i) => (
+        <p key={i} className="text-sm text-[#d0d6d6] leading-relaxed whitespace-pre-wrap">
+          {para.split(/(#\w+)/g).map((chunk, j) =>
+            chunk.startsWith('#') ? (
+              <span key={j} className="text-blue-400 font-medium">{chunk}</span>
+            ) : (
+              chunk
+            )
+          )}
+        </p>
+      ))}
+    </div>
+  );
 }
 
 function threeLinePreview(text: string): string {
@@ -452,45 +477,224 @@ function PublishedTable({ files }: { files: DomainFile[] }) {
 
 // ── post dialog ───────────────────────────────────────────────────────────────
 
-function PostDialog({ file, onClose }: { file: DomainFile; onClose: () => void }) {
-  const fm = file.frontmatter;
-  const topic = str(fm.topic);
+const LI_CHAR_LIMIT = 3000;
+
+function PostDialog({ file, onClose, onActioned }: { file: DomainFile; onClose: () => void; onActioned?: (fp: string) => void }) {
+  const fm          = file.frontmatter;
+  const topic       = str(fm.topic);
   const publishedAt = str(fm.published_at ?? fm.created);
-  const postUrl = str(fm.post_url);
-  const content = extractPostContent(file.body);
+  const postUrl     = str(fm.post_url);
+  const content     = extractPostContent(file.body);
+  const purpose     = extractPurpose(file.body);
+  const stageKey    = file.stage.toLowerCase();
+  const isPending   = stageKey === 'pending_approval' || stageKey === 'needs_action';
+  const isApproved  = stageKey === 'approved';
+
+  const [copied, setCopied]     = useState(false);
+  const [approving, setApproving] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  const [marking, setMarking]   = useState(false);
+  const [tab, setTab]           = useState<'post' | 'purpose'>('post');
+
+  const chars    = content.length;
+  const charPct  = Math.min((chars / LI_CHAR_LIMIT) * 100, 100);
+  const charOver = chars > LI_CHAR_LIMIT;
+  const wc       = wordCount(content);
+  const hc       = hashtagCount(content);
+  const formattedDate = publishedAt
+    ? new Date(publishedAt).toLocaleString(undefined, {
+        month: 'short', day: 'numeric', year: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+      })
+    : '';
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  };
+
+  const act = async (action: 'approve' | 'reject' | 'mark') => {
+    if (action === 'approve') { setApproving(true); await approvePending(file.filepath); setApproving(false); }
+    if (action === 'reject')  { setRejecting(true); await rejectPending(file.filepath);  setRejecting(false); }
+    if (action === 'mark')    { setMarking(true);   await markLinkedInPublished(file.filepath); setMarking(false); }
+    onActioned?.(file.filepath);
+    onClose();
+  };
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-lg bg-[#042630] border-[#4c7273]/30 max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-slate-200 pr-6">
-            {topic || 'LinkedIn Post'}
-          </DialogTitle>
-          <div className="flex items-center gap-3 flex-wrap mt-1">
-            <Badge className={cn('text-[10px] border', STATUS_STYLES[file.stage.toLowerCase()] ?? 'bg-slate-500/20 text-slate-300')}>
-              {statusLabel(file.stage)}
-            </Badge>
-            {publishedAt && (
-              <time dateTime={publishedAt} className="text-xs text-slate-500">
-                {new Date(publishedAt).toLocaleString()}
-              </time>
-            )}
-            {postUrl && (
-              <a
-                href={postUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"
-              >
-                <ExternalLink className="w-3 h-3" /> View on LinkedIn
-              </a>
-            )}
+      <DialogContent
+        showCloseButton
+        className="w-[min(680px,calc(100vw-2rem))] max-h-[90vh] bg-[#042630] border border-[#4c7273]/30 text-[#d0d6d6] p-0 overflow-hidden flex flex-col"
+      >
+        {/* ── header ── */}
+        <DialogHeader className="shrink-0 px-5 pt-4 pb-3 border-b border-[#4c7273]/20">
+          <div className="flex items-start gap-3 pr-6">
+            <div className="w-9 h-9 rounded-xl bg-[#0a66c2]/20 border border-[#0a66c2]/30 flex items-center justify-center shrink-0 mt-0.5">
+              <Share2 className="w-4 h-4 text-[#0a66c2]" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <DialogTitle className="text-base font-semibold text-[#d0d6d6] leading-snug">
+                {topic || 'LinkedIn Post'}
+              </DialogTitle>
+              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                <Badge className={cn('text-[10px] border', STATUS_STYLES[stageKey] ?? 'bg-slate-500/20 text-slate-300')}>
+                  {statusLabel(file.stage)}
+                </Badge>
+                {formattedDate && (
+                  <span className="flex items-center gap-1 text-[11px] text-[#4c7273]">
+                    <Calendar className="w-3 h-3" />
+                    {formattedDate}
+                  </span>
+                )}
+                {postUrl && (
+                  <a
+                    href={postUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 transition-colors"
+                  >
+                    <ExternalLink className="w-3 h-3" /> View on LinkedIn
+                  </a>
+                )}
+              </div>
+            </div>
           </div>
+
+          {/* ── stats row ── */}
+          <div className="flex items-center gap-3 mt-3 flex-wrap">
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#041421] border border-[#4c7273]/20">
+              <AlignLeft className="w-3 h-3 text-[#4c7273]" />
+              <span className="text-[11px] text-[#86b9b0] font-medium">{wc} words</span>
+            </div>
+            <div className={cn(
+              'flex items-center gap-1.5 px-2.5 py-1 rounded-lg border',
+              charOver
+                ? 'bg-red-500/10 border-red-500/30'
+                : 'bg-[#041421] border-[#4c7273]/20'
+            )}>
+              <span className={cn('text-[11px] font-medium', charOver ? 'text-red-400' : 'text-[#86b9b0]')}>
+                {chars} / {LI_CHAR_LIMIT} chars
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#041421] border border-[#4c7273]/20">
+              <Hash className="w-3 h-3 text-[#4c7273]" />
+              <span className="text-[11px] text-[#86b9b0] font-medium">{hc} hashtags</span>
+            </div>
+
+            {/* character bar */}
+            <div className="flex-1 min-w-[80px] h-1.5 rounded-full bg-[#041421] overflow-hidden">
+              <div
+                className={cn('h-full rounded-full transition-all', charOver ? 'bg-red-500' : charPct > 80 ? 'bg-amber-400' : 'bg-[#0a66c2]')}
+                style={{ width: `${charPct}%` }}
+              />
+            </div>
+          </div>
+
+          {/* ── tab switcher (only if purpose exists) ── */}
+          {purpose && (
+            <div className="flex gap-0.5 mt-3 bg-[#041421] rounded-lg p-1 w-fit border border-[#4c7273]/20">
+              <button
+                onClick={() => setTab('post')}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all',
+                  tab === 'post'
+                    ? 'bg-[#042630] text-[#86b9b0] border border-[#4c7273]/40'
+                    : 'text-[#4c7273] hover:text-[#86b9b0]'
+                )}
+              >
+                <AlignLeft className="w-3 h-3" /> Post
+              </button>
+              <button
+                onClick={() => setTab('purpose')}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all',
+                  tab === 'purpose'
+                    ? 'bg-[#042630] text-[#86b9b0] border border-[#4c7273]/40'
+                    : 'text-[#4c7273] hover:text-[#86b9b0]'
+                )}
+              >
+                <Target className="w-3 h-3" /> Purpose
+              </button>
+            </div>
+          )}
         </DialogHeader>
-        <div className="mt-2">
-          <pre className="text-sm text-slate-300 whitespace-pre-wrap break-words font-sans leading-relaxed">
-            {content || file.body || '(no content)'}
-          </pre>
+
+        {/* ── scrollable body ── */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
+          {tab === 'post' ? (
+            <div className="rounded-xl bg-[#041421] border border-[#4c7273]/20 px-5 py-4">
+              {content
+                ? <PostContentRenderer text={content} />
+                : <p className="text-sm text-[#4c7273] italic">(no content)</p>
+              }
+            </div>
+          ) : (
+            <div className="rounded-xl bg-[#041421] border border-[#4c7273]/20 px-5 py-4">
+              <p className="text-sm text-[#c8d0d0] leading-relaxed whitespace-pre-wrap">{purpose}</p>
+            </div>
+          )}
+        </div>
+
+        {/* ── footer actions ── */}
+        <div className="shrink-0 flex items-center gap-2 px-5 py-3 border-t border-[#4c7273]/20">
+          {/* Copy button always present */}
+          <button
+            onClick={handleCopy}
+            className={cn(
+              'flex items-center gap-1.5 px-3 h-9 rounded-lg text-xs font-medium border transition-all',
+              copied
+                ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                : 'bg-[#041421] border-[#4c7273]/20 text-[#4c7273] hover:text-[#86b9b0] hover:border-[#4c7273]/40'
+            )}
+          >
+            {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+            {copied ? 'Copied!' : 'Copy'}
+          </button>
+
+          <div className="flex-1" />
+
+          {isPending && (
+            <>
+              <button
+                onClick={() => act('reject')}
+                disabled={approving || rejecting}
+                className="flex items-center gap-1.5 px-4 h-9 rounded-lg text-sm font-medium bg-rose-700/80 hover:bg-rose-600 text-white disabled:opacity-50 transition-all"
+              >
+                {rejecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>✗</span>}
+                Reject
+              </button>
+              <button
+                onClick={() => act('approve')}
+                disabled={approving || rejecting}
+                className="flex items-center gap-1.5 px-4 h-9 rounded-lg text-sm font-medium bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white disabled:opacity-50 transition-all"
+              >
+                {approving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                Approve
+              </button>
+            </>
+          )}
+
+          {isApproved && (
+            <button
+              onClick={() => act('mark')}
+              disabled={marking}
+              className="flex items-center gap-1.5 px-4 h-9 rounded-lg text-sm font-medium bg-[#0a66c2]/80 hover:bg-[#0a66c2] text-white disabled:opacity-50 transition-all"
+            >
+              {marking ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+              Mark as Published
+            </button>
+          )}
+
+          {!isPending && !isApproved && (
+            <button
+              onClick={onClose}
+              className="flex items-center gap-1.5 px-4 h-9 rounded-lg text-sm font-medium bg-[#041421] border border-[#4c7273]/20 text-[#4c7273] hover:text-[#86b9b0] transition-all"
+            >
+              Close
+            </button>
+          )}
         </div>
       </DialogContent>
     </Dialog>
@@ -592,7 +796,7 @@ export default function LinkedInPage() {
       <PublishedTable files={files} />
 
       {/* Post dialog */}
-      {selected && <PostDialog file={selected} onClose={() => setSelected(null)} />}
+      {selected && <PostDialog file={selected} onClose={() => setSelected(null)} onActioned={handleActioned} />}
     </div>
   );
 }

@@ -837,18 +837,38 @@ status: pending
                 self._generate_whatsapp_plan(task_file_path)
 
         elif task_type in ("linkedin_task", "linkedin_post"):
-            # Delete the trigger file immediately (it's a signal, not a real post)
-            # so it never appears in the LinkedIn page. Then spawn the skill.
+            # Read topic BEFORE deleting the trigger file
             import threading
-            self.write_log(task_name, "LINKEDIN_TRIGGERED", "Spawning linkedin_post_creator skill", domain="linkedin")
-            logger.info(f"LinkedIn trigger received — spawning skill for {task_name}")
+            topic_val = ""
+            try:
+                trigger_content = task_file_path.read_text(encoding="utf-8")
+                m = re.search(r'^topic:\s*"?([^"\n]+)"?\s*$', trigger_content, flags=re.MULTILINE)
+                if m:
+                    topic_val = m.group(1).strip()
+            except Exception:
+                pass
+
+            self.write_log(task_name, "LINKEDIN_TRIGGERED", f"Spawning linkedin_post_creator skill (topic: {topic_val or 'auto'})", domain="linkedin")
+            logger.info(f"LinkedIn trigger received — spawning skill for {task_name} (topic: {topic_val or 'auto'})")
             try:
                 task_file_path.unlink()
             except Exception as e:
                 logger.warning(f"Could not delete LinkedIn trigger file: {e}")
 
-            def _run_linkedin():
-                self.run_claude_skill("linkedin_post_creator", Path("."))
+            if topic_val:
+                linkedin_prompt = (
+                    f'Run the linkedin_post_creator skill. '
+                    f'The user has requested a LinkedIn post about this specific topic: "{topic_val}". '
+                    f'Use this topic — do not auto-select from the rotation list.'
+                )
+            else:
+                linkedin_prompt = (
+                    "The daily scheduler has triggered. "
+                    "Run the linkedin_post_creator skill to auto-select a topic and create today's LinkedIn post."
+                )
+
+            def _run_linkedin(prompt=linkedin_prompt):
+                self.run_claude_skill("linkedin_post_creator", Path("."), prompt=prompt)
 
             t = threading.Thread(target=_run_linkedin, daemon=True)
             t.start()
