@@ -11,7 +11,7 @@ from base_watcher import BaseWatcher
 class FileSystemWatcher(BaseWatcher):
 
     def __init__(self, vault_path: str):
-        super().__init__(vault_path, check_interval=10)
+        super().__init__(vault_path, check_interval=5)
         self.inbox = self.vault_path / "Inbox" / "email"
         self.archive = self.inbox / "Archive"
         self.archive.mkdir(parents=True, exist_ok=True)

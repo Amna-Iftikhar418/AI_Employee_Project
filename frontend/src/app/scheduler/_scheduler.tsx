@@ -12,23 +12,23 @@ import { cn } from '@/lib/utils';
 // ── persisted disabled jobs ───────────────────────────────────────────────────
 
 const LS_KEY = 'scheduler_disabled_jobs';
-const LS_HISTORY_CLEARED = 'scheduler_history_cleared_date';
-
-function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+const LS_HISTORY_CLEARED = 'scheduler_history_cleared';
 
 function loadHistoryCleared(): boolean {
   if (typeof window === 'undefined') return false;
   try {
-    return localStorage.getItem(LS_HISTORY_CLEARED) === todayStr();
+    return localStorage.getItem(LS_HISTORY_CLEARED) === 'true';
   } catch {
     return false;
   }
 }
 
 function saveHistoryCleared(): void {
-  localStorage.setItem(LS_HISTORY_CLEARED, todayStr());
+  localStorage.setItem(LS_HISTORY_CLEARED, 'true');
+}
+
+function clearHistoryFlag(): void {
+  localStorage.removeItem(LS_HISTORY_CLEARED);
 }
 
 
@@ -88,14 +88,14 @@ const JOBS: Job[] = [
   },
   {
     name: 'Log Cleanup',
-    schedule: 'Every Monday 07:00',
-    cron: '0 7 * * 1',
+    schedule: 'Every Monday 10:00',
+    cron: '0 10 * * 1',
     action: 'cleanup',
     icon: <Trash2 className="w-4 h-4" />,
     color: '#64748b',
     triggerLabel: 'Run Log Cleanup Now',
     dayOfWeek: 1,
-    hour: 7,
+    hour: 10,
     minute: 0,
   },
 ];
@@ -385,15 +385,28 @@ function SchedulerHistory({ cleared = false }: { cleared?: boolean }) {
 export default function SchedulerPage() {
   const [disabledJobs, setDisabledJobs] = useState<Set<string>>(new Set());
   const [historyCleared, setHistoryCleared] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setDisabledJobs(loadDisabled());
     setHistoryCleared(loadHistoryCleared());
+    setMounted(true);
   }, []);
 
-  const handleClearHistory = () => {
+  const handleClearHistory = async () => {
+    // Delete actual log files from disk for the last 7 days
+    try {
+      await fetch('/api/vault/logs?days=7', { method: 'DELETE' });
+    } catch {
+      // best-effort — still clear the UI even if API fails
+    }
     saveHistoryCleared();
     setHistoryCleared(true);
+  };
+
+  const handleShowHistory = () => {
+    clearHistoryFlag();
+    setHistoryCleared(false);
   };
 
   const handleToggle = (action: string) => {
@@ -443,7 +456,15 @@ export default function SchedulerPage() {
             Activity — Last 7 Days
           </h2>
           <div className="flex-1 h-px bg-[#4c7273]/20" />
-          {!historyCleared && (
+          {mounted && (historyCleared ? (
+            <button
+              onClick={handleShowHistory}
+              aria-label="Show activity history"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#4c7273]/15 border border-[#4c7273]/40 text-[#4c7273] text-xs font-semibold hover:bg-[#4c7273]/30 transition-colors duration-150 cursor-pointer"
+            >
+              Show History
+            </button>
+          ) : (
             <button
               onClick={handleClearHistory}
               aria-label="Clear activity history"
@@ -452,9 +473,9 @@ export default function SchedulerPage() {
               <X className="w-3.5 h-3.5" />
               Clean Up
             </button>
-          )}
+          ))}
         </div>
-        <SchedulerHistory cleared={historyCleared} />
+        {mounted && <SchedulerHistory cleared={historyCleared} />}
       </section>
     </div>
   );

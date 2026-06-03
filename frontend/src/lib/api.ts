@@ -155,6 +155,26 @@ export function deleteScreenshot(src: string): Promise<{ success: boolean }> {
     .then((r) => r.json() as Promise<{ success: boolean }>);
 }
 
+export interface ScrapeResult {
+  name: string;
+  content: string;
+  size: number;
+  createdAt: string;
+}
+
+export interface ScrapeResultsResponse {
+  scrapes: ScrapeResult[];
+}
+
+export function fetchScrapeResults(): Promise<ScrapeResultsResponse> {
+  return get('/vault/scrapes');
+}
+
+export function deleteScrape(filename: string): Promise<{ success: boolean }> {
+  return fetch(`/api/vault/scrapes/${encodeURIComponent(filename)}`, { method: 'DELETE' })
+    .then((r) => r.json() as Promise<{ success: boolean }>);
+}
+
 export interface SocialTokenStatus {
   configured: boolean;
   valid: boolean;

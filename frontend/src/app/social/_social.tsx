@@ -299,18 +299,22 @@ function CreatePostButton({ platform }: { platform: Platform }) {
 
 const PENDING_STAGES = new Set(['pending_approval', 'needs_action']);
 
-interface PostCardProps {
+// ── post detail modal ─────────────────────────────────────────────────────────
+
+interface PostDetailModalProps {
   file: DomainFile;
   platform: Platform;
+  onClose: () => void;
   onDeleted: (fp: string) => void;
   onActioned: (fp: string) => void;
 }
 
-function PostCard({ file, platform, onDeleted, onActioned }: PostCardProps) {
+function PostDetailModal({ file, platform, onClose, onDeleted, onActioned }: PostDetailModalProps) {
   const [deleting, setDeleting] = useState(false);
   const [approving, setApproving] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [imageUrlInput, setImageUrlInput] = useState(() => str(file.frontmatter.image_url));
+
   const fm = file.frontmatter;
   const text = getPostText(file, platform);
   const imageUrl = str(fm.image_url);
@@ -319,9 +323,210 @@ function PostCard({ file, platform, onDeleted, onActioned }: PostCardProps) {
   const stageKey = resolveStageKey(file);
   const config = PLATFORM_CONFIG[platform];
   const isPending = PENDING_STAGES.has(stageKey);
-  // Instagram cannot publish without an image — the Meta Graph API rejects text-only posts.
   const requiresImage = platform === 'instagram';
   const approveDisabled = approving || rejecting || (requiresImage && !imageUrlInput.trim());
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await deleteVaultFile(file.filepath);
+      onDeleted(file.filepath);
+      onClose();
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleApprove = async () => {
+    setApproving(true);
+    try {
+      await approvePending(file.filepath, undefined, imageUrlInput.trim() || undefined);
+      onActioned(file.filepath);
+      onClose();
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  const handleReject = async () => {
+    setRejecting(true);
+    try {
+      await rejectPending(file.filepath);
+      onActioned(file.filepath);
+      onClose();
+    } finally {
+      setRejecting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+
+      <div className="relative z-10 w-full max-w-xl rounded-2xl border border-[#4c7273]/40 bg-[#041c2a] shadow-2xl shadow-black/60 flex flex-col max-h-[90vh]">
+
+        {/* header */}
+        <div
+          className="flex items-center justify-between px-5 py-3 border-b border-[#4c7273]/20 shrink-0"
+          style={{ borderTop: `3px solid ${config.color}` }}
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: config.color }} />
+            <span className="text-sm font-semibold text-[#d0d6d6]">{config.label} Post</span>
+            <Badge
+              className={cn(
+                'text-[10px] border',
+                STATUS_STYLES[stageKey] ?? 'bg-slate-500/20 text-slate-300 border-slate-500/30'
+              )}
+            >
+              {STATUS_LABEL[stageKey] ?? file.stage}
+            </Badge>
+          </div>
+          <button onClick={onClose} className="text-[#4c7273] hover:text-[#d0d6d6] transition-colors shrink-0">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto p-5 space-y-4">
+
+          {/* meta row */}
+          <div className="flex items-center gap-4 text-xs text-[#4c7273]">
+            {created && (
+              <time dateTime={created} className="flex items-center gap-1">
+                <Calendar className="w-3 h-3" />
+                {new Date(created).toLocaleString()}
+              </time>
+            )}
+            <span className="flex items-center gap-1">
+              <FileText className="w-3 h-3" />
+              {wordCount(text)} words
+            </span>
+            <span className="flex items-center gap-1">
+              <Hash className="w-3 h-3" />
+              {hashtagCount(text)} tags
+            </span>
+          </div>
+
+          {/* topic */}
+          {str(fm.topic) && (
+            <p className="text-xs text-[#86b9b0]">
+              <span className="text-[#4c7273]">Topic · </span>{str(fm.topic)}
+            </p>
+          )}
+
+          {/* image */}
+          {imageUrl ? (
+            <div className="rounded-xl overflow-hidden border border-[#4c7273]/30 bg-[#041421]">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={imageUrl}
+                alt="Post image"
+                className="w-full max-h-56 object-cover"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-[#4c7273]/30 bg-[#041421] h-24 flex items-center justify-center">
+              <ImageIcon className="w-6 h-6 text-[#4c7273]" />
+            </div>
+          )}
+
+          {/* full post text */}
+          <div className="rounded-xl bg-[#020f18] border border-[#4c7273]/20 p-4">
+            <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-line">
+              {text || '(no content)'}
+            </p>
+          </div>
+
+          {/* separate instagram caption — only on the instagram view */}
+          {platform === 'instagram' && caption && caption !== text && (
+            <div className="rounded-xl bg-[#020f18] border border-[#4c7273]/20 p-4">
+              <p className="text-[10px] uppercase tracking-wide text-[#4c7273] font-semibold mb-2">Instagram Caption</p>
+              <p className="text-xs text-slate-400 leading-relaxed whitespace-pre-line">{caption}</p>
+            </div>
+          )}
+
+          {/* approve / reject for pending */}
+          {isPending && (
+            <div className="space-y-3 pt-1 border-t border-[#4c7273]/20">
+              <div className="space-y-1.5">
+                <label className="text-[11px] text-slate-400 flex items-center gap-1">
+                  <ImageIcon className="w-3 h-3" />
+                  Image URL {requiresImage ? '(required)' : '(optional)'}
+                </label>
+                <input
+                  type="url"
+                  value={imageUrlInput}
+                  onChange={(e) => setImageUrlInput(e.target.value)}
+                  placeholder="https://example.com/image.jpg"
+                  className="w-full h-9 rounded-lg bg-[#041421] border border-[#4c7273]/30 px-3 text-xs text-[#d0d6d6] placeholder:text-[#4c7273] focus:outline-none focus:border-[#86b9b0]/50"
+                />
+                {requiresImage && !imageUrlInput.trim() && (
+                  <p className="text-[10px] text-amber-400/80">
+                    Instagram requires a public image URL before it can publish.
+                  </p>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleApprove}
+                  disabled={approveDisabled}
+                  className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg text-sm font-medium bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                  {approving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                  Approve &amp; Publish
+                </button>
+                <button
+                  onClick={handleReject}
+                  disabled={approving || rejecting}
+                  className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-lg text-sm font-medium bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 border border-rose-500/30 disabled:opacity-50 transition-all"
+                >
+                  {rejecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+                  Reject
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* footer */}
+        <div className="px-5 py-3 border-t border-[#4c7273]/20 shrink-0 flex items-center justify-between">
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="flex items-center gap-1.5 px-3 h-8 rounded-lg text-xs font-medium text-rose-400 hover:bg-rose-500/10 border border-rose-500/20 hover:border-rose-500/40 transition-all disabled:opacity-50"
+          >
+            {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+            Delete
+          </button>
+          <button
+            onClick={onClose}
+            className="px-4 h-8 rounded-lg text-xs font-medium text-[#4c7273] hover:text-[#d0d6d6] border border-[#4c7273]/30 hover:border-[#4c7273]/60 transition-all"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface PostCardProps {
+  file: DomainFile;
+  platform: Platform;
+  onDeleted: (fp: string) => void;
+  onActioned: (fp: string) => void;
+}
+
+function PostCard({ file, platform, onDeleted, onActioned }: PostCardProps) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const fm = file.frontmatter;
+  const text = getPostText(file, platform);
+  const imageUrl = str(fm.image_url);
+  const created = str(fm.created);
+  const stageKey = resolveStageKey(file);
+  const config = PLATFORM_CONFIG[platform];
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -334,167 +539,110 @@ function PostCard({ file, platform, onDeleted, onActioned }: PostCardProps) {
     }
   };
 
-  const handleApprove = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setApproving(true);
-    try {
-      await approvePending(file.filepath, undefined, imageUrlInput.trim() || undefined);
-      onActioned(file.filepath);
-    } finally {
-      setApproving(false);
-    }
-  };
-
-  const handleReject = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setRejecting(true);
-    try {
-      await rejectPending(file.filepath);
-      onActioned(file.filepath);
-    } finally {
-      setRejecting(false);
-    }
-  };
-
   return (
-    <div className="relative group rounded-xl border border-[#4c7273]/30 bg-[#042630] overflow-hidden">
-      {/* Platform stripe */}
-      <div
-        className="h-1 w-full"
-        style={{ background: `linear-gradient(90deg, ${config.color}, ${config.color}88)` }}
-      />
-
-      <div className="p-4 space-y-3">
-        {/* Status + timestamp */}
-        <div className="flex items-center justify-between gap-2">
-          <Badge
-            className={cn(
-              'text-[10px] border',
-              STATUS_STYLES[stageKey] ?? 'bg-slate-500/20 text-slate-300 border-slate-500/30'
-            )}
-          >
-            {STATUS_LABEL[stageKey] ?? file.stage}
-          </Badge>
-          {created && (
-            <time dateTime={created} className="text-[11px] text-slate-500 flex items-center gap-1">
-              <Calendar className="w-3 h-3" />
-              {new Date(created).toLocaleDateString()}
-            </time>
-          )}
-        </div>
-
-        {/* Topic / From */}
-        {str(fm.topic) && (
-          <p className="text-[11px] text-[#86b9b0] truncate">
-            <span className="text-[#4c7273]">from · </span>{str(fm.topic)}
-          </p>
-        )}
-
-        {/* Image */}
-        {imageUrl && (
-          <div className="rounded-lg overflow-hidden border border-[#4c7273]/30 bg-[#041421]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={imageUrl}
-              alt="Post image"
-              className="w-full h-36 object-cover"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = 'none';
-              }}
-            />
-          </div>
-        )}
-
-        {/* No-image placeholder */}
-        {!imageUrl && (
-          <div className="rounded-lg border border-dashed border-[#4c7273]/30 bg-[#041421] h-20 flex items-center justify-center">
-            <ImageIcon className="w-5 h-5 text-[#4c7273]" />
-          </div>
-        )}
-
-        {/* Post text preview */}
-        <p className="text-sm text-slate-300 line-clamp-4 leading-relaxed whitespace-pre-line">
-          {text || '(no content)'}
-        </p>
-
-        {/* Caption if separate */}
-        {caption && caption !== text && (
-          <p className="text-xs text-slate-500 italic line-clamp-2">{caption}</p>
-        )}
-
-        {/* Stats row */}
-        <div className="flex items-center gap-4 text-xs text-[#4c7273] border-t border-[#4c7273]/20 pt-2">
-          <span className="flex items-center gap-1">
-            <FileText className="w-3 h-3" />
-            {wordCount(text)} words
-          </span>
-          <span className="flex items-center gap-1">
-            <Hash className="w-3 h-3" />
-            {hashtagCount(text)} tags
-          </span>
-        </div>
-      </div>
-
-      {/* Inline approve/reject for pending posts */}
-      {isPending && (
-        <div className="px-4 pb-4 space-y-2">
-          {/* Image URL — required for Instagram, optional for Facebook */}
-          <div className="space-y-1">
-            <label className="text-[11px] text-slate-400 flex items-center gap-1">
-              <ImageIcon className="w-3 h-3" />
-              Image URL {requiresImage ? '(required)' : '(optional)'}
-            </label>
-            <input
-              type="url"
-              value={imageUrlInput}
-              onChange={(e) => setImageUrlInput(e.target.value)}
-              onClick={(e) => e.stopPropagation()}
-              placeholder="https://example.com/image.jpg"
-              className="w-full h-8 rounded-lg bg-[#041421] border border-[#4c7273]/30 px-2 text-xs text-[#d0d6d6] placeholder:text-[#4c7273] focus:outline-none focus:border-[#86b9b0]/50"
-            />
-            {requiresImage && !imageUrlInput.trim() && (
-              <p className="text-[10px] text-amber-400/80">
-                Instagram requires a public image URL before it can publish.
-              </p>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={handleApprove}
-              disabled={approveDisabled}
-              title={requiresImage && !imageUrlInput.trim() ? 'Add an image URL to publish to Instagram' : undefined}
-              className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg text-xs font-medium bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-            >
-              {approving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-              Approve &amp; Publish
-            </button>
-            <button
-              onClick={handleReject}
-              disabled={approving || rejecting}
-              className="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-lg text-xs font-medium bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 border border-rose-500/30 disabled:opacity-50 transition-all"
-            >
-              {rejecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
-              Reject
-            </button>
-          </div>
-        </div>
+    <>
+      {/* Modal */}
+      {modalOpen && (
+        <PostDetailModal
+          file={file}
+          platform={platform}
+          onClose={() => setModalOpen(false)}
+          onDeleted={onDeleted}
+          onActioned={onActioned}
+        />
       )}
 
-      {/* Delete button — hover reveal, all stages */}
-      <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        {deleting ? (
-          <Loader2 className="w-4 h-4 animate-spin text-slate-500" />
-        ) : (
-          <button
-            onClick={handleDelete}
-            className="w-6 h-6 flex items-center justify-center rounded bg-[#041421] hover:bg-rose-500/10 text-[#4c7273] hover:text-rose-400 transition-colors"
-            aria-label="Delete post"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-        )}
+      {/* Card — click opens modal */}
+      <div
+        onClick={() => setModalOpen(true)}
+        className="relative group rounded-xl border border-[#4c7273]/30 bg-[#042630] overflow-hidden cursor-pointer hover:border-[#4c7273]/60 hover:bg-[#052f3a] transition-all"
+      >
+        {/* Platform stripe */}
+        <div
+          className="h-1 w-full"
+          style={{ background: `linear-gradient(90deg, ${config.color}, ${config.color}88)` }}
+        />
+
+        <div className="p-4 space-y-3">
+          {/* Status + timestamp */}
+          <div className="flex items-center justify-between gap-2">
+            <Badge
+              className={cn(
+                'text-[10px] border',
+                STATUS_STYLES[stageKey] ?? 'bg-slate-500/20 text-slate-300 border-slate-500/30'
+              )}
+            >
+              {STATUS_LABEL[stageKey] ?? file.stage}
+            </Badge>
+            {created && (
+              <time dateTime={created} className="text-[11px] text-slate-500 flex items-center gap-1">
+                <Calendar className="w-3 h-3" />
+                {new Date(created).toLocaleDateString()}
+              </time>
+            )}
+          </div>
+
+          {/* Topic */}
+          {str(fm.topic) && (
+            <p className="text-[11px] text-[#86b9b0] truncate">
+              <span className="text-[#4c7273]">from · </span>{str(fm.topic)}
+            </p>
+          )}
+
+          {/* Image */}
+          {imageUrl ? (
+            <div className="rounded-lg overflow-hidden border border-[#4c7273]/30 bg-[#041421]">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={imageUrl}
+                alt="Post image"
+                className="w-full h-36 object-cover"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-[#4c7273]/30 bg-[#041421] h-20 flex items-center justify-center">
+              <ImageIcon className="w-5 h-5 text-[#4c7273]" />
+            </div>
+          )}
+
+          {/* Post text preview — clamped, full text in modal */}
+          <p className="text-sm text-slate-300 line-clamp-4 leading-relaxed whitespace-pre-line">
+            {text || '(no content)'}
+          </p>
+
+          {/* Stats row */}
+          <div className="flex items-center gap-4 text-xs text-[#4c7273] border-t border-[#4c7273]/20 pt-2">
+            <span className="flex items-center gap-1">
+              <FileText className="w-3 h-3" />
+              {wordCount(text)} words
+            </span>
+            <span className="flex items-center gap-1">
+              <Hash className="w-3 h-3" />
+              {hashtagCount(text)} tags
+            </span>
+            <span className="ml-auto text-[10px] text-[#4c7273]/60 group-hover:text-[#86b9b0] transition-colors">
+              click to view ↗
+            </span>
+          </div>
+        </div>
+
+        {/* Delete button — hover reveal */}
+        <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          {deleting ? (
+            <Loader2 className="w-4 h-4 animate-spin text-slate-500" />
+          ) : (
+            <button
+              onClick={handleDelete}
+              className="w-6 h-6 flex items-center justify-center rounded bg-[#041421] hover:bg-rose-500/10 text-[#4c7273] hover:text-rose-400 transition-colors"
+              aria-label="Delete post"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 

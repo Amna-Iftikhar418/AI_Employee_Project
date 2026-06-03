@@ -104,12 +104,12 @@ def cleanup_audit_logs():
 
 schedule.every().day.at("09:00").do(run_linkedin_post)
 schedule.every().monday.at("08:00").do(generate_ceo_briefing)
-schedule.every().monday.at("07:00").do(cleanup_audit_logs)  # TASK-8.5
+schedule.every().monday.at("10:00").do(cleanup_audit_logs)  # after briefing (08:00) and LinkedIn (09:00)
 
 logger.info("Started.")
 logger.info("  - LinkedIn post:     daily at 09:00")
 logger.info("  - CEO Briefing:      every Monday at 08:00")
-logger.info("  - Audit log cleanup: every Monday at 07:00 (90-day retention)")
+logger.info("  - Audit log cleanup: every Monday at 10:00 (runs after briefing and LinkedIn post)")
 
 # ── Startup catch-up: run missed jobs if not yet done today ──────────────────
 _now = datetime.now()
@@ -140,6 +140,11 @@ if _now.weekday() == 0:  # 0 = Monday
     if not _briefing_path.exists():
         logger.info("Monday detected on startup — running missed CEO Briefing now.")
         generate_ceo_briefing()
+
+# Audit log cleanup catch-up: Mondays only, after 10:00
+if _now.weekday() == 0 and _now.hour >= 10:
+    logger.info("Monday detected on startup after 10:00 — running missed audit log cleanup now.")
+    cleanup_audit_logs()
 
 while True:
     try:

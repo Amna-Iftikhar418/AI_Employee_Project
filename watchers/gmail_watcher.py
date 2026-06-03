@@ -606,7 +606,7 @@ Body:
     def run(self):
         """Run the watcher continuously."""
         # FIX: Check interval is configurable via env — no code change needed
-        check_interval = int(os.getenv("GMAIL_CHECK_INTERVAL", "30"))
+        check_interval = int(os.getenv("GMAIL_CHECK_INTERVAL", "10"))
 
         logger.info("=" * 50)
         logger.info("Gmail Inbox Watcher Started")

@@ -110,5 +110,23 @@ ${odooTableBlock}${payloadBlock}`;
     return NextResponse.json({ error: `Failed to write task file: ${msg}` }, { status: 500 });
   }
 
-  return NextResponse.json({ success: true, taskFile: filename });
+  // For cleanup, also delete all log files (last 30 days) so the Log page is cleared
+  const deletedLogs: string[] = [];
+  if (action === 'cleanup') {
+    const logsDir = path.join(VAULT_ROOT, 'Logs');
+    for (let i = 0; i < 30; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().slice(0, 10);
+      const logPath = path.join(logsDir, `log_${dateStr}.md`);
+      try {
+        await fs.unlink(logPath);
+        deletedLogs.push(`log_${dateStr}.md`);
+      } catch {
+        // file doesn't exist — skip
+      }
+    }
+  }
+
+  return NextResponse.json({ success: true, taskFile: filename, deletedLogs });
 }

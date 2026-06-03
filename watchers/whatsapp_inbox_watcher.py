@@ -96,7 +96,7 @@ class WhatsAppInboxWatcher(BaseWatcher):
         timestamp = datetime.now().strftime("%H:%M:%S")
         append_log(
             self.logs_dir,
-            f"[{timestamp}] RECEIVED: {filename} - WhatsApp message from {sender}, task created",
+            f"[{timestamp}] [whatsapp] RECEIVED: {filename} - WhatsApp message from {sender}, task created",
         )
 
     def _update_dashboard(self, filename: str):

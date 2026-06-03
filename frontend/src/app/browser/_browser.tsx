@@ -13,6 +13,9 @@ import {
   Clock,
   XCircle,
   Trash2,
+  FileText,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import KpiCard from '@/components/KpiCard';
 import BrowserTaskCard from '@/components/BrowserTaskCard';
@@ -23,7 +26,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { fetchDomain, fetchScreenshots, triggerAction, deleteScreenshot, DomainFile } from '@/lib/api';
+import { fetchDomain, fetchScreenshots, fetchScrapeResults, triggerAction, deleteScreenshot, deleteScrape, DomainFile, ScrapeResult } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 // ── filter ────────────────────────────────────────────────────────────────────
@@ -328,6 +331,104 @@ function ScreenshotGallery() {
   );
 }
 
+// ── scrape results ────────────────────────────────────────────────────────────
+
+function ScrapeResultCard({ scrape, onDeleted }: { scrape: ScrapeResult; onDeleted: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const preview = scrape.content.slice(0, 300);
+  const hasMore = scrape.content.length > 300;
+  const ts = scrape.createdAt ? new Date(scrape.createdAt).toLocaleString() : '';
+  const kb = (scrape.size / 1024).toFixed(1);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await deleteScrape(scrape.name);
+      onDeleted();
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-[#4c7273]/30 bg-[#042630] p-4 space-y-2">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <FileText className="w-4 h-4 text-amber-400 shrink-0" />
+          <span className="text-xs font-mono text-slate-300 truncate">{scrape.name}</span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-[10px] text-slate-500">{kb} KB</span>
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            aria-label={`Delete scrape: ${scrape.name}`}
+            className="flex items-center justify-center w-5 h-5 rounded-full bg-rose-600/70 hover:bg-rose-500 text-white disabled:opacity-50 transition-colors"
+          >
+            {deleting ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <XCircle className="w-3 h-3" />}
+          </button>
+        </div>
+      </div>
+
+      {ts && <p className="text-[10px] text-slate-500">{ts}</p>}
+
+      {/* Content */}
+      <div className="rounded-lg bg-[#041421] border border-[#4c7273]/20 p-3">
+        <pre className="text-xs text-slate-300 whitespace-pre-wrap break-words leading-relaxed font-mono">
+          {expanded ? scrape.content : preview}
+          {!expanded && hasMore && (
+            <span className="text-slate-600">…</span>
+          )}
+        </pre>
+      </div>
+
+      {hasMore && (
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="flex items-center gap-1 text-[11px] text-[#86b9b0] hover:text-[#d0d6d6] transition-colors"
+        >
+          {expanded
+            ? <><ChevronUp className="w-3 h-3" /> Show less</>
+            : <><ChevronDown className="w-3 h-3" /> Show full result ({(scrape.content.length / 1024).toFixed(1)} KB)</>}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ScrapeResultsSection() {
+  const queryClient = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ['scrapes'],
+    queryFn: fetchScrapeResults,
+    refetchInterval: 15_000,
+  });
+
+  const scrapes = data?.scrapes ?? [];
+
+  const handleDeleted = () => queryClient.invalidateQueries({ queryKey: ['scrapes'] });
+
+  if (scrapes.length === 0) {
+    return (
+      <div className="rounded-xl border border-[#4c7273]/30 bg-[#042630] p-8 flex flex-col items-center gap-3 text-center">
+        <FileText className="w-8 h-8 text-[#4c7273]" />
+        <p className="text-[#4c7273] text-sm">No scrape results yet.</p>
+        <p className="text-xs text-[#4c7273]">Run a scrape task and results will appear here.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid sm:grid-cols-2 gap-4">
+      {scrapes.map((s) => (
+        <ScrapeResultCard key={s.name} scrape={s} onDeleted={handleDeleted} />
+      ))}
+    </div>
+  );
+}
+
 // ── page ──────────────────────────────────────────────────────────────────────
 
 export default function BrowserPage() {
@@ -473,6 +574,14 @@ export default function BrowserPage() {
             ))}
           </div>
         )}
+      </section>
+
+      {/* Scrape results */}
+      <section aria-label="Scrape results">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">
+          Scrape Results
+        </h2>
+        <ScrapeResultsSection />
       </section>
 
       {/* Screenshot gallery */}

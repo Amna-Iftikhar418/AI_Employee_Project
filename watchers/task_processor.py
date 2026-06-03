@@ -477,38 +477,87 @@ pending
         plan_path.write_text(plan_content, encoding="utf-8")
         logger.info(f"WhatsApp plan generated: {plan_path.name}")
 
-    def _generate_social_post(self, platform: str | None = None):
+    def _groq_content(self, prompt: str) -> str | None:
+        """Call Groq API to generate content. Returns text or None on failure."""
+        api_key = os.getenv("GROQ_API_KEY", "")
+        if not api_key:
+            return None
+        try:
+            from groq import Groq
+            client = Groq(api_key=api_key)
+            resp = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=512,
+                temperature=0.85,
+            )
+            return resp.choices[0].message.content.strip()
+        except Exception as e:
+            logger.warning(f"Groq content generation failed: {e}")
+            return None
+
+    def _generate_social_post(self, platform: str | None = None, topic: str | None = None):
         """Generate SOCIAL_POST_*.md drafts.
 
         platform: "facebook" or "instagram" generates only that platform's
         draft. None (default) generates both — used by schedulers / back-compat.
+        topic: the subject/theme for the post content. Falls back to a default
+        if not provided.
         """
         platform = (platform or "").strip().lower() or None
+        topic = (topic or "").strip() or "AI Employee automation"
         want_fb = platform in (None, "facebook")
         want_ig = platform in (None, "instagram")
         now = datetime.now()
         ts = now.strftime("%Y%m%d_%H%M%S")
         created = now.isoformat()
 
-        facebook_message = (
-            "🚀 Exciting news! Our AI Employee system is transforming how businesses operate.\n\n"
-            "Imagine having an intelligent assistant that:\n"
-            "✅ Processes your emails automatically\n"
-            "✅ Handles WhatsApp messages 24/7\n"
-            "✅ Manages your LinkedIn presence\n"
-            "✅ Integrates with your business systems\n\n"
-            "All with human approval built in — you stay in control while AI handles the routine.\n\n"
-            "Ready to supercharge your productivity? Let's talk!\n\n"
-            "#AIEmployee #BusinessAutomation #Productivity #AI #DigitalTransformation"
+        # Derive fallback hashtags from topic words
+        words = [w.title() for w in re.sub(r"[^a-zA-Z0-9 ]", "", topic).split() if len(w) > 2]
+        tag1 = "".join(words[:2]) if len(words) >= 2 else (words[0] if words else "AIEmployee")
+        tag2 = "BusinessAutomation"
+        tag3 = "AI"
+
+        # ── Generate Facebook content via Groq ────────────────────────
+        fb_prompt = (
+            f"Write a Facebook post for a business AI automation company about: {topic}.\n"
+            f"Requirements:\n"
+            f"- 150-300 words, conversational and professional tone\n"
+            f"- 2-3 short paragraphs: hook → value → call to action\n"
+            f"- End with 2-3 relevant hashtags\n"
+            f"- Do NOT include a subject line or title — just the post body\n"
+            f"Output only the post text, nothing else."
+        )
+        facebook_message = self._groq_content(fb_prompt) or (
+            f"{topic.capitalize()} is changing how modern businesses operate — and the results speak for themselves.\n\n"
+            f"Our AI Employee system makes it possible:\n"
+            f"✅ Emails handled automatically — no more inbox overload\n"
+            f"✅ WhatsApp messages responded to 24/7\n"
+            f"✅ LinkedIn presence managed and growing\n"
+            f"✅ Business systems (invoices, CRM) all connected\n\n"
+            f"And the best part? You're always in control. Every AI action goes through human approval before execution.\n\n"
+            f"If {topic} sounds like something your business needs, let's talk.\n\n"
+            f"#{tag1} #{tag2} #{tag3} #DigitalTransformation #Productivity"
         )
 
-        instagram_caption = (
-            "🤖 AI Employee — your business on autopilot!\n\n"
-            "From emails to WhatsApp, LinkedIn to invoicing — "
-            "our AI handles it all while keeping YOU in control.\n\n"
-            "Human approval built in. Maximum productivity. Zero micromanagement.\n\n"
-            "#AIEmployee #BusinessAutomation #AI #Productivity #SmartBusiness "
-            "#DigitalTransformation #Tech #Innovation #Entrepreneur #BusinessGrowth"
+        # ── Generate Instagram content via Groq ───────────────────────
+        ig_prompt = (
+            f"Write an Instagram caption for a business AI automation company about: {topic}.\n"
+            f"Requirements:\n"
+            f"- 80-150 words total\n"
+            f"- Punchy opening line (first 125 chars must hook the reader)\n"
+            f"- Shorter, more visual and emotional tone than Facebook\n"
+            f"- No external links in the caption\n"
+            f"- End with 5-10 relevant hashtags on a separate line\n"
+            f"Output only the caption text, nothing else."
+        )
+        instagram_caption = self._groq_content(ig_prompt) or (
+            f"🤖 {topic.capitalize()} — your competitive edge starts here.\n\n"
+            f"From emails to WhatsApp, LinkedIn to invoicing — "
+            f"AI handles the routine while YOU focus on growth.\n\n"
+            f"Human approval built in. Zero risk. Maximum productivity.\n\n"
+            f"#{tag1} #{tag2} #{tag3} #SmartBusiness "
+            f"#DigitalTransformation #Tech #Innovation #Entrepreneur #BusinessGrowth"
         )
 
         def _yaml_block(text: str) -> str:
@@ -582,7 +631,7 @@ status: pending
         plan_content = f"""---
 type: social_post
 platforms: "{plats_label}"
-topic: AI Employee business promotion
+topic: {topic}
 created: "{created}"
 status: pending
 ---
@@ -596,6 +645,128 @@ status: pending
         plan_path.write_text(plan_content, encoding="utf-8")
         logger.info(f"Social plan created: {plan_path.name}")
         self.write_log(f"SOCIAL_POST_{ts}", "PENDING_APPROVAL", f"{plats_label} post draft(s) ready for review", domain="social")
+
+    # ------------------------------------------------------------------
+    # LinkedIn post generator (no Claude subprocess)
+    # ------------------------------------------------------------------
+
+    def _generate_linkedin_post(self, topic: str) -> None:
+        """Generate a LinkedIn post draft directly in Python — instant, no Claude spawn."""
+        import random
+
+        now = datetime.now()
+        rand6 = random.randint(100000, 999999)
+        ts = now.strftime("%Y%m%d%H%M%S") + f"_{rand6}"
+        created = now.isoformat()
+        today = now.strftime("%Y-%m-%d")
+
+        topic = topic.strip() or "AI automation in business"
+
+        # Derive 3 hashtags from topic words
+        words = [w.title() for w in re.sub(r"[^a-zA-Z0-9 ]", "", topic).split() if len(w) > 2]
+        tag1 = "".join(words[:2]) if len(words) >= 2 else (words[0] if words else "Automation")
+        tag2 = "BusinessGrowth"
+        tag3 = "AI"
+
+        post_content = f"""{topic.capitalize()} is harder than it looks — until you build the right system.
+
+I spent months getting it wrong before the pattern clicked.
+
+Here's what actually works:
+
+→ Break it into the smallest possible repeatable step first
+→ Document that step before you automate anything
+→ Add human checkpoints — not everywhere, just at the decisions that matter
+→ Measure the before/after. If you can't measure it, you can't improve it
+
+The trap most teams fall into: automating chaos. You end up with fast chaos.
+
+Slow down. Map the process. Then automate the boring parts and keep humans in the loop for judgment calls.
+
+That one shift — from "automate everything" to "automate the right things" — is where results actually come from. 🎯
+
+I've seen this work across industries. The specifics change. The principle doesn't.
+
+What's the one part of {topic} that still feels frustrating or manual for your team?
+
+#{tag1} #{tag2} #{tag3}"""
+
+        plan_content = f"""---
+type: linkedin_post
+status: pending
+created: {created}
+topic: {topic}
+post_filename: LINKEDIN_POST_{ts}.md
+---
+
+# Plan: LINKEDIN_{ts}
+
+## Objective
+Post about {topic} to build professional brand on LinkedIn and provide value to audience.
+
+## Content Strategy
+- Hook: {topic.capitalize()} is harder than it looks — until you build the right system.
+- Story/Idea: Practical steps to approach {topic} — document, automate the boring parts, keep humans for judgment
+- Insight: Automate the right things, not everything
+- CTA Question: What part of {topic} still feels manual for your team?
+- Emoji count: 1
+- Hashtag count: 3
+- Word count: ~160
+
+## Proposed Post
+
+{post_content}
+
+## Proposed Response
+N/A — this is a LinkedIn post, not an email reply.
+Content is in ## Proposed Post above.
+
+## Approval Required
+Yes — LinkedIn posts always require human approval before publishing.
+
+## Expected Outcome
+Professional LinkedIn post published. Audience engagement via comments.
+
+## Compliance Notes
+- LinkedIn posts are always sensitive — always route to Pending_Approval
+- Max 1 post per day unless --force override
+- No duplicate topics within 7 days
+
+## Status
+pending
+"""
+
+        post_file_content = f"""---
+type: linkedin_post
+status: pending
+created: {created}
+topic: {topic}
+plan_reference: PLAN_LINKEDIN_{ts}.md
+---
+
+## Post Content
+
+{post_content}
+
+## Purpose
+
+This post about {topic} provides actionable insights for professionals looking to improve operations and stay ahead in today's automated business landscape.
+"""
+
+        linkedin_plans = self.plans_dir / "linkedin"
+        linkedin_plans.mkdir(parents=True, exist_ok=True)
+        plan_path = linkedin_plans / f"PLAN_LINKEDIN_{ts}.md"
+        plan_path.write_text(plan_content, encoding="utf-8")
+        logger.info(f"LinkedIn plan created: {plan_path.name}")
+
+        linkedin_pending = self.pending_approval_dir / "linkedin"
+        linkedin_pending.mkdir(parents=True, exist_ok=True)
+        post_path = linkedin_pending / f"LINKEDIN_POST_{ts}.md"
+        post_path.write_text(post_file_content, encoding="utf-8")
+        logger.info(f"LinkedIn post created in Pending_Approval: {post_path.name}")
+
+        self.write_log(f"LINKEDIN_{ts}", "LINKEDIN POST CREATED", f"Topic: {topic} — draft ready for review", domain="linkedin")
+        self.update_dashboard(f"LINKEDIN_{ts}", "LINKEDIN_POST_CREATED")
 
     # ------------------------------------------------------------------
     # Retry helpers
@@ -838,7 +1009,6 @@ status: pending
 
         elif task_type in ("linkedin_task", "linkedin_post"):
             # Read topic BEFORE deleting the trigger file
-            import threading
             topic_val = ""
             try:
                 trigger_content = task_file_path.read_text(encoding="utf-8")
@@ -848,52 +1018,47 @@ status: pending
             except Exception:
                 pass
 
-            self.write_log(task_name, "LINKEDIN_TRIGGERED", f"Spawning linkedin_post_creator skill (topic: {topic_val or 'auto'})", domain="linkedin")
-            logger.info(f"LinkedIn trigger received — spawning skill for {task_name} (topic: {topic_val or 'auto'})")
+            effective_topic = topic_val or "AI automation in business"
+            self.write_log(task_name, "LINKEDIN_TRIGGERED", f"Generating LinkedIn post draft (topic: {effective_topic})", domain="linkedin")
+            logger.info(f"LinkedIn trigger received — generating draft for {task_name} (topic: {effective_topic})")
             try:
                 task_file_path.unlink()
             except Exception as e:
                 logger.warning(f"Could not delete LinkedIn trigger file: {e}")
 
-            if topic_val:
-                linkedin_prompt = (
-                    f'Run the linkedin_post_creator skill. '
-                    f'The user has requested a LinkedIn post about this specific topic: "{topic_val}". '
-                    f'Use this topic — do not auto-select from the rotation list.'
-                )
-            else:
-                linkedin_prompt = (
-                    "The daily scheduler has triggered. "
-                    "Run the linkedin_post_creator skill to auto-select a topic and create today's LinkedIn post."
-                )
-
-            def _run_linkedin(prompt=linkedin_prompt):
-                self.run_claude_skill("linkedin_post_creator", Path("."), prompt=prompt)
-
-            t = threading.Thread(target=_run_linkedin, daemon=True)
-            t.start()
+            # Generate the post draft directly in Python — no Claude subprocess needed.
+            # This is instant (< 1s) vs spawning claude -p which takes 30–120s.
+            try:
+                self._generate_linkedin_post(effective_topic)
+            except Exception as e:
+                logger.error(f"LinkedIn post generation failed: {e}")
             return
 
         elif task_type in ("social_task", "social_post"):
             # Delete trigger and generate social post draft directly (no Claude subprocess).
-            # Read the requested platform (set by the dashboard tab) before deleting.
+            # Read the requested platform and topic before deleting.
             platform = None
+            topic_val = ""
             try:
                 trigger_content = task_file_path.read_text(encoding="utf-8")
-                m = re.search(r"^platform:\s*\"?(facebook|instagram)\"?\s*$",
-                              trigger_content, flags=re.MULTILINE | re.IGNORECASE)
-                if m:
-                    platform = m.group(1).lower()
+                m_plat = re.search(r"^platform:\s*\"?(facebook|instagram)\"?\s*$",
+                                   trigger_content, flags=re.MULTILINE | re.IGNORECASE)
+                if m_plat:
+                    platform = m_plat.group(1).lower()
+                m_topic = re.search(r'^topic:\s*"?([^"\n]+)"?\s*$', trigger_content, flags=re.MULTILINE)
+                if m_topic:
+                    topic_val = m_topic.group(1).strip()
             except Exception as e:
-                logger.warning(f"Could not read platform from social trigger: {e}")
+                logger.warning(f"Could not read data from social trigger: {e}")
+            effective_topic = topic_val or "AI Employee automation"
             plat_desc = platform or "facebook + instagram"
             self.write_log(task_name, "SOCIAL_TRIGGERED", f"Generating social post draft ({plat_desc})", domain="social")
-            logger.info(f"Social trigger received — generating {plat_desc} post for {task_name}")
+            logger.info(f"Social trigger received — generating {plat_desc} post for {task_name} (topic: {effective_topic})")
             try:
                 task_file_path.unlink()
             except Exception as e:
                 logger.warning(f"Could not delete social trigger file: {e}")
-            self._generate_social_post(platform)
+            self._generate_social_post(platform, effective_topic)
             return
 
         elif task_type == "odoo_task":
@@ -919,13 +1084,22 @@ status: pending
             action_match = re.search(r"^action:\s*(\S+)", content, re.MULTILINE)
             browser_action = action_match.group(1).strip() if action_match else "navigate"
             if browser_action in ("navigate", "scrape"):
-                # Read-only: run directly via browser_executor (Playwright, no Claude spawn)
-                # Mark as processing immediately so re-scans skip this file while the thread runs
-                self.update_task_status(task_file_path, "processing")
+                # Read-only: atomically move file to Processing/browser/ before starting
+                # the thread — OS rename is atomic so only one process can win the move,
+                # preventing duplicate runs when two processes watch the same directory.
+                processing_dir = self.vault_path / "Processing" / "browser"
+                processing_dir.mkdir(parents=True, exist_ok=True)
+                processing_path = processing_dir / task_file_path.name
+                try:
+                    task_file_path.rename(processing_path)
+                except (FileNotFoundError, FileExistsError):
+                    # Another process already grabbed this file — skip it
+                    return
+                self.update_task_status(processing_path, "processing")
                 self.write_log(task_name, "BROWSER_TRIGGERED", f"Running browser_executor for {browser_action}", domain="browser")
                 logger.info(f"Browser read-only task — running executor: {task_name}")
                 import threading
-                task_path_copy = task_file_path
+                task_path_copy = processing_path
                 def _run_browser():
                     try:
                         from browser_executor import run_browser_task
@@ -1005,7 +1179,8 @@ status: pending
         target = pending_dir / task_file_path.name
         shutil.move(str(task_file_path), str(target))
 
-        self.write_log(task_name, "PENDING_APPROVAL", "Waiting for user decision")
+        log_domain = "whatsapp" if task_type == "whatsapp_task" else "email"
+        self.write_log(task_name, "PENDING_APPROVAL", "Waiting for user decision", domain=log_domain)
         logger.info(f"Moved to Pending_Approval: {task_name}")
 
     def process_approved_task(self, task_file_path):
@@ -1068,7 +1243,8 @@ status: pending
             self._cleanup_related_files_for_task(target, task_type)
 
             self.update_dashboard(task_name, "Completed")
-            self.write_log(task_name, "EXECUTED", "Approved and completed")
+            exec_domain = "whatsapp" if task_type == "whatsapp_task" else ""
+            self.write_log(task_name, "EXECUTED", "Approved and completed", domain=exec_domain)
             logger.info(f"Completed: {task_name}")
 
     def process_rejected_task(self, task_file_path):
@@ -1115,7 +1291,8 @@ status: pending
             logger.info(f"[CLEANUP] Deleted from Pending_Approval: {pending_file.name}")
 
         self.update_dashboard(task_name, "Rejected")
-        self.write_log(task_name, "REJECTED", "Task rejected by user")
+        reject_domain = "whatsapp" if task_type == "whatsapp_task" else "email"
+        self.write_log(task_name, "REJECTED", "Task rejected by user", domain=reject_domain)
 
     # ------------------------------------------------------------------
     # Cleanup loop for completed tasks
@@ -1138,7 +1315,7 @@ status: pending
     # ------------------------------------------------------------------
 
     def run(self):
-        check_interval = int(os.getenv("TASK_PROCESSOR_INTERVAL", "20"))
+        check_interval = int(os.getenv("TASK_PROCESSOR_INTERVAL", "5"))
         cleanup_counter = 0
         logger.info(f"Starting Task Processor (interval: {check_interval}s)...")
 
